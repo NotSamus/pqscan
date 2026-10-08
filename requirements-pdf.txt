@@ -1,0 +1,2 @@
+# Optional. Scanning and Ollama requests use only the Python standard library.
+reportlab>=4.4,<5

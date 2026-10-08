@@ -1,0 +1,2 @@
+# A declared PQC capability is not proof of production use.
+pqcrypto>=0.3

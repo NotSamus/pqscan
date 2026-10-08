@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 reports/
 repos_to_test/
+output/
+tmp/

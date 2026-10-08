@@ -1,8 +1,10 @@
 # PQScan
 
 Analyze a local repository for quantum-vulnerable cryptography and evidence of
-post-quantum cryptography (PQC). Runs offline with **Python 3.9+ and no third-party
-dependencies**. The scanner never imports, builds, or executes the target code.
+post-quantum cryptography (PQC). Scanning runs offline with **Python 3.9+ and no
+third-party dependencies**. Optionally add a **local Ollama review** and export a
+**PDF backed by JSON**. PDF export uses ReportLab. The scanner never imports,
+builds, or executes the target code.
 
 ```bash
 python3 /Users/notsamus/Desktop/pqscan/pqscan.py ~/path_to_repo
@@ -19,6 +21,196 @@ python3 ~/pqscan.py ~/path_to_repo
 Use `python` instead of `python3` if that command selects Python 3.9 or later on
 your system. A target may be any local folder; it does not need to be a Git
 checkout. Nothing needs to be installed in the target repository.
+
+## Desktop app (PySide6)
+
+The desktop app uses the same scanner, local Ollama client, and JSON/PDF pipeline:
+
+```bash
+cd /Users/notsamus/Desktop/pqscan
+.venv/bin/python -m pip install -r requirements-gui.txt
+.venv/bin/python pqscan_gui.py
+
+# Preselect a repository, or inspect a previously saved report
+.venv/bin/python pqscan_gui.py --repository ~/path_to_repo
+.venv/bin/python pqscan_gui.py --report reports/scan.json
+```
+
+Choose a repository and report folder. Optionally enable local Ollama review and
+refresh the downloaded-model list, then click **Analyze repository**. JSON is
+always saved; PDF is enabled by default. Each scan gets a unique output filename.
+Scanning, inference, and PDF generation run in a separate process, so the window
+stays responsive. Cancel stops that process and retains any saved JSON checkpoint.
+It does not stop your Ollama service.
+
+The overview shows fusion evidence and missing verification. The findings tab
+supports search, severity/context filters, sorting, and detailed source evidence.
+Separate tabs show model commentary, coverage gaps, and activity/errors.
+**Load JSON** reopens earlier scans, **Export PDF** renders the loaded report
+without rescanning or calling the model, and **Open report** opens the PDF (or JSON
+when no PDF exists). The GUI requires `pqscan_gui.py` and `pqscan.py` together;
+the CLI remains portable as a single file.
+
+## Fusion assessment: capability, implementation, verification
+
+The `pqscan-evidence-fusion-v1` profile gives PQC declarations credit while
+distinguishing what each signal actually establishes:
+
+| Evidence | Fusion interpretation |
+| --- | --- |
+| Recognized PQC dependency or algorithm import | **PQC capability declared**. A possible adoption-intent signal; installed version and actual use remain unverified. |
+| PQC algorithm in configuration | **PQC configuration evidence**. Does not prove that configuration was deployed or negotiated. |
+| Recognized PQC call or source usage pattern | **PQC implementation evidence**. Stronger adoption evidence; reachability and correctness still require verification. |
+| PQC only in tests, examples, or recognized development dependencies | **PQC limited to tests/examples**. Does not establish production protection or test success. |
+| Classical production crypto alongside PQC signals | **Mixed evidence**. Positive findings do not cancel classical paths; inspect hybrid design and fallbacks. |
+
+Declarations and usage together corroborate adoption. They are still static
+observations, not independent proofs. Multiple findings on the same file/line and
+evidence kind count as one site. No arbitrary percentage or score is presented
+as the probability of being quantum-safe.
+
+The name-based PQC library registry currently recognizes `pqcrypto`, `oqs`,
+`liboqs`, `liboqs-python`, `oqs-provider`, `@noble/post-quantum`, and `circl`.
+Their project documentation describes PQC capabilities:
+[pqcrypto](https://github.com/backbone-hq/pqcrypto),
+[Open Quantum Safe](https://openquantumsafe.org/liboqs/),
+[noble-post-quantum](https://github.com/paulmillr/noble-post-quantum), and
+[CIRCL](https://github.com/cloudflare/circl).
+Recognition does not audit the declared version, provenance, installed provider,
+or supported parameter sets. Generic dependencies such as `cryptography` and
+OpenSSL receive no PQC capability credit based solely on their names.
+
+`package.json` uses dependency fields rather than descriptions/scripts;
+`devDependencies` are classified as test context. Requirements files use package
+declarations rather than comments. Other supported manifests retain lexical
+inventory rules, so inspect their evidence for false positives.
+
+The profile explicitly records **runtime verification not performed**,
+**implementation tests not executed**, and **security review not performed**.
+Ollama explains the evidence but cannot raise its verification level. This
+release does not execute validation suites, observe deployed protocols, accept
+reviewer attestations, or issue readiness certificates. Those require additional
+evidence tied to a specific implementation and scope. The original scanner
+assessment and CI severity gates remain unchanged.
+
+Fusion results appear in `fusion_assessment` in JSON, in the text/PDF reports,
+and in the desktop overview. Loading older JSON recomputes fusion from the saved
+findings; a supplied derived claim cannot grant itself certification.
+
+## Correctness and NIST compliance evidence
+
+The `pqscan-nist-correctness-v1` profile adds a separate
+`correctness_compliance` section. It does not turn adoption evidence into a
+conformance claim. It records the exact evidence that can be checked statically:
+
+| Algorithm | Approved parameter sets |
+| --- | --- |
+| ML-KEM (FIPS 203) | ML-KEM-512, ML-KEM-768, ML-KEM-1024 |
+| ML-DSA (FIPS 204) | ML-DSA-44, ML-DSA-65, ML-DSA-87 |
+| SLH-DSA (FIPS 205) | SHA2/SHAKE variants of 128s, 128f, 192s, 192f, 256s, and 256f |
+
+An approved identifier is reported as **approved identifier observed**. A bare
+family name such as `ML-KEM` is **parameter selection unresolved**. Explicit
+unrecognized selectors such as `ML-KEM-999` create a compliance-gap finding.
+This checks names in source; it does not prove that a provider maps a name to the
+final standard or that a dynamic selector has the expected value.
+
+The scanner also inventories recognizable ML-KEM decapsulation, PQC signature
+verification, and FIPS encoding/decoding calls. Imports alone do not count as
+validation paths. Evidence in tests is shown separately and tests are not run.
+The JSON, desktop **Correctness & compliance** tab, text output, and PDF all state
+that known-answer tests, negative tests, interoperability tests, ACVP/CAVP status,
+and FIPS module validation remain unexecuted or unverified.
+
+This division follows the final [FIPS 203](https://csrc.nist.gov/pubs/fips/203/final),
+[FIPS 204](https://csrc.nist.gov/pubs/fips/204/final), and
+[FIPS 205](https://csrc.nist.gov/pubs/fips/205/final) standards. NIST directs
+implementers to the [Cryptographic Algorithm Validation Program](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program)
+for algorithm validation. Passing PQScan's static checks is therefore a review
+milestone, not a NIST validation or a quantum-readiness certificate.
+
+## Local Ollama review and PDF report
+
+Set up the optional PDF dependency in the scanner's environment:
+
+```bash
+cd /Users/notsamus/Desktop/pqscan
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-pdf.txt
+ollama list
+```
+
+Start Ollama (the desktop app or `ollama serve`) if it is not already running.
+Choose a downloaded model from `ollama list`; PQScan does not download models.
+For example, using the locally installed `gemma4:e4b`:
+
+```bash
+.venv/bin/python pqscan.py ~/path_to_repo \
+  --ollama gemma4:e4b \
+  --pdf reports/readiness.pdf
+```
+
+This command:
+
+1. Scans the repository and saves `reports/readiness.json` immediately.
+2. Sends a bounded selection of scan findings to the local Ollama HTTP API.
+3. Validates the structured model response and adds it under `llm_analysis` in
+   the JSON. The scanner assessment and findings remain unchanged.
+4. Builds `reports/readiness.pdf` from the same report, with an assessment,
+   model-assisted action plan, full finding inventory, coverage, and references.
+
+`--pdf` always creates a JSON sidecar, regardless of `--format`. Use `--output`
+to choose a different JSON filename. Output directories are created as needed;
+existing JSON or PDF files are never overwritten. If you copy `pqscan.py`
+elsewhere, PDF export still needs ReportLab in the Python environment you use;
+the script itself remains self-contained.
+
+More workflows:
+
+```bash
+# Deterministic PDF and JSON, without an LLM
+.venv/bin/python pqscan.py ~/path_to_repo --pdf reports/static.pdf
+
+# Save JSON now; review it and build a PDF later without rescanning
+python3 pqscan.py ~/path_to_repo --format json -o reports/scan.json
+.venv/bin/python pqscan.py --from-json reports/scan.json \
+  --ollama gemma4:e4b --pdf reports/reviewed.pdf
+
+# Render a previously reviewed JSON without another model request
+.venv/bin/python pqscan.py --from-json reports/reviewed.json \
+  --pdf reports/reprinted.pdf
+
+# Ollama-assisted JSON without a PDF or ReportLab dependency
+python3 pqscan.py ~/path_to_repo --ollama gemma4:e4b \
+  --format json -o reports/analysis.json
+
+# Custom local port and timeout
+.venv/bin/python pqscan.py ~/path_to_repo --ollama gemma4:e4b \
+  --ollama-url http://127.0.0.1:11435 --ollama-timeout 300 \
+  --pdf reports/readiness-custom.pdf
+```
+
+The model reviews **scan evidence**, not complete source files. Requests include
+relative filenames, matched algorithm tokens, finding IDs, classifications,
+summary counts, rule guidance, and coverage metadata. Full source lines, key
+material, and the absolute repository root are not supplied. The client only
+accepts loopback URLs, bypasses HTTP proxy settings, refuses redirects and known
+cloud/remote models, and never downloads a model. Run it against a local Ollama
+service you control.
+
+The prompt includes at most 60 findings within a 12,000-character serialized
+finding budget, prioritizing production usage and severity. `findings_sent` and
+`findings_omitted` disclose this selection; **all** findings remain in JSON and
+PDF. Large repositories may therefore receive a partial model review even when
+the static scan completed. Each proposed priority must reference supplied IDs.
+Responses are schema-checked, but factual correctness still needs human review.
+
+Ollama failures, missing models, timeouts, incomplete generation, and invalid
+model responses are recorded as `llm_analysis.status = "failed"`. The command
+still produces a static PDF with an explicit failure notice and returns `2`.
+If PDF rendering fails or ReportLab is missing, the JSON remains available. If
+interrupted during model inference, an already saved JSON checkpoint records
+`pending`. The default model request timeout is 180 seconds.
 
 ## What the report means
 
@@ -103,7 +295,7 @@ Exit codes:
 - `0`: report completed; no configured severity gate was triggered. **Not a
   quantum-ready verdict.** Without `--fail-on`, findings do not change this code.
 - `1`: a production usage/configuration finding meets the `--fail-on` threshold.
-- `2`: invalid input, read/traversal/output error, or incomplete coverage when a
+- `2`: invalid input, read/traversal/output error, requested Ollama/PDF failure, or incomplete coverage when a
   severity gate was requested and no finding already triggered exit `1`.
 - `130`: interrupted with Ctrl+C.
 
@@ -112,9 +304,12 @@ crypto-free repository can return `0`; inspect the assessment in JSON if your CI
 policy requires specific evidence. Read/traversal errors always return `2`.
 
 The JSON report has schema version `1.0`, the assessment, category/severity/context
-counts, findings, limitations, and coverage details. It records each skipped path
+counts, findings with `F0001`-style IDs, limitations, and coverage details. It records each skipped path
 and reason, exclusions, parse warnings, and read errors. Findings are ordered
 deterministically; the timestamp reflects when the scan ran.
+When requested, `llm_analysis` stores the model name/digest, review status,
+evidence selection counts, and validated advisory analysis. Model output never
+changes CI severity decisions; a failed requested model review returns `2`.
 
 ## Scan scope and exclusions
 
@@ -163,7 +358,10 @@ python3 pqscan.py examples/classical   # MIGRATION NEEDED
 python3 pqscan.py examples/pqc         # PQC EVIDENCE FOUND
 python3 pqscan.py examples/mixed       # MIGRATION NEEDED, with PQC evidence
 python3 pqscan.py examples/no_crypto   # NO CRYPTO EVIDENCE
+python3 pqscan.py examples/declared    # Fusion: PQC capability declared
 python3 -m unittest discover -s tests -v
+# Include optional PDF and offscreen desktop integration tests
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 Examples are scan fixtures, not complete secure protocol implementations. Their
@@ -172,8 +370,9 @@ repositories and check classification, source locations, aliases, mixed/hybrid
 code, exclusions, coverage gaps, portability, JSON, and CI exit codes.
 
 Add new algorithm/API patterns to `RULES` in `pqscan.py`, and add regression tests
-for both detection and plausible false positives. Keep the standalone file free
-of third-party dependencies.
+for both detection and plausible false positives. Keep the scanner and Ollama
+client free of third-party dependencies. Import PDF dependencies only when PDF
+export is requested.
 
 The earlier GUI/network/packet scanner and its capture were preserved in
 [`legacy/`](legacy/NOTICE.md). The new analyzer does not use those files.
@@ -190,3 +389,6 @@ for the evolving standardization program. The
 [NIST FAQ](https://csrc.nist.gov/projects/post-quantum-cryptography/faqs)
 discusses hybrid designs and the different quantum impact on symmetric
 cryptography; this scanner does not label AES-128 as quantum-broken.
+
+The Ollama client uses the official [chat API](https://docs.ollama.com/api/chat)
+and [structured JSON outputs](https://docs.ollama.com/capabilities/structured-outputs).
