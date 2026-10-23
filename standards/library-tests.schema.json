@@ -1,0 +1,164 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "const": "completed"
+    },
+    "artifact_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "provider": {
+          "const": "default"
+        },
+        "loaded_path": {
+          "const": "/runner/libcrypto.so"
+        },
+        "loaded_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "version",
+        "provider",
+        "loaded_path",
+        "loaded_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "isolation_checks": {
+      "type": "object",
+      "properties": {
+        "uid": {
+          "const": 65534
+        },
+        "active_interfaces": {
+          "type": "array",
+          "items": {
+            "const": "lo"
+          },
+          "maxItems": 1,
+          "minItems": 1
+        },
+        "root_read_only": {
+          "const": true
+        },
+        "capabilities_zero": {
+          "const": true
+        },
+        "no_new_privileges": {
+          "const": true
+        },
+        "seccomp_filter": {
+          "const": true
+        }
+      },
+      "required": [
+        "uid",
+        "active_interfaces",
+        "root_read_only",
+        "capabilities_zero",
+        "no_new_privileges",
+        "seccomp_filter"
+      ],
+      "additionalProperties": false
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "observation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "bytes"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "boolean"
+                  },
+                  "value": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "exception",
+                      "unexpected"
+                    ]
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            ],
+            "$schema": "https://json-schema.org/draft/2020-12/schema"
+          }
+        },
+        "required": [
+          "id",
+          "observation"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 33,
+      "minItems": 33
+    }
+  },
+  "required": [
+    "status",
+    "artifact_sha256",
+    "runtime",
+    "isolation_checks",
+    "observations"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

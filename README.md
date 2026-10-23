@@ -4,7 +4,16 @@ Analyze a local repository for quantum-vulnerable cryptography and evidence of
 post-quantum cryptography (PQC). Scanning runs offline with **Python 3.9+ and no
 third-party dependencies**. Optionally add a **local Ollama review** and export a
 **PDF backed by JSON**. PDF export uses ReportLab. The scanner never imports,
-builds, or executes the target code.
+builds, or executes the target code. A separate explicit validation command can
+exercise a pinned provider build inside a restricted Docker container. A separate
+library workflow can build and test a captured implementation checkout.
+
+The intended scope includes **PQC libraries and algorithm implementation
+repositories**, alongside applications that use them. **Milestone 4b** adds source
+snapshots, a native C index and isolated source-to-artifact tests for OpenSSL.
+Other libraries can be inspected but need their own reviewed build/test adapter.
+See [implementation scope](IMPLEMENTATION_SCOPE.md) and
+[library analysis instructions](validation/LIBRARY_REVIEW.md).
 
 ```bash
 python3 /Users/notsamus/Desktop/pqscan/pqscan.py ~/path_to_repo
@@ -88,8 +97,10 @@ inventory rules, so inspect their evidence for false positives.
 The profile explicitly records **runtime verification not performed**,
 **implementation tests not executed**, and **security review not performed**.
 Ollama explains the evidence but cannot raise its verification level. This
-release does not execute validation suites, observe deployed protocols, accept
-reviewer attestations, or issue readiness certificates. Those require additional
+scan profile does not execute validation suites, observe deployed protocols, accept
+reviewer attestations, or issue readiness certificates. The separate milestone 4
+provider runner records bounded test results without changing these scan claims.
+Broader conclusions require additional
 evidence tied to a specific implementation and scope. The original scanner
 assessment and CI severity gates remain unchanged.
 
@@ -129,6 +140,219 @@ implementers to the [Cryptographic Algorithm Validation Program](https://csrc.ni
 for algorithm validation. Passing PQScan's static checks is therefore a review
 milestone, not a NIST validation or a quantum-readiness certificate.
 
+## Specification requirements catalog (milestone 1)
+
+When `pqscan_analysis/` and `standards/` are present alongside `pqscan.py`, scans
+add a separate `specification_review` JSON section and a short text summary.
+The initial versioned catalog covers 12 selected requirements from FIPS 203,
+FIPS 204, FIPS 205 and SP 800-227. It records exact section citations, conditional
+applicability, expected behavior, verification methods, publication hashes and
+reviewed errata dispositions. See [the catalog documentation](standards/README.md)
+for scope and the JSON schemas.
+
+```bash
+python3 pqscan.py examples/pqc --format json -o reports/specification.json
+```
+
+This milestone defines the requirements and report contract. Every requirement
+remains **not assessed**, applicability remains **unknown**, and exploitability
+is **not assessed**. Production and nonproduction finding IDs are inventory
+pointers, not validation results. Missing evidence never becomes a pass.
+The catalog is partial, and the report lists excluded topics separately from
+repository coverage gaps.
+
+Older schema-1.0 reports load normally; the new section is recomputed from their
+saved findings and the currently installed catalog. Imported derived claims
+cannot certify themselves. Copying `pqscan.py` alone still works for inventory,
+with specification review explicitly marked `catalog_unavailable`. No additional
+dependencies or network access are needed. A present but invalid catalog fails
+explicitly. Detailed GUI/PDF requirement views remain a later milestone. The
+separate provider runner below supplies scoped execution evidence without
+promoting this inventory-derived specification section.
+
+## Python source evidence (milestone 2)
+
+Opt in to a bounded Python source index and local source excerpts:
+
+```bash
+python3 pqscan.py examples/source_review --review-source --format json \
+  -o reports/source-review.json
+```
+
+The `source_review` section contains file and excerpt hashes, symbol locations,
+imports, candidate call paths, provider boundaries, dependency declarations and
+selected source excerpts. It follows aliases, wrappers and re-exports across
+files, while marking ambiguous bindings and dynamic dispatch unresolved. Excerpts
+include source text and may contain sensitive literals; they are stored locally.
+The **default scan and `--ollama` remain metadata-only**, including when
+`--review-source` and `--ollama` are combined. Sending source to a model requires
+the separate `--ollama-source` option below.
+
+The collector uses the same bytes as the inventory scan and preserves its
+exclusions. Default limits are 200 files / 2 MiB captured bytes, 50,000 AST nodes,
+24 excerpts, 4,000 characters per excerpt, and 24,000 source characters overall.
+Use `--source-max-chars 8000` to reduce the total excerpt budget. Omitted and
+truncated context is explicit; other languages remain inventory-only. No target
+code is run, and no requirement is promoted to verified status.
+
+Saved source reports load without rereading repository files and are marked
+`imported_unverified`. Source collection requires a live scan, so
+`--from-json --review-source` is rejected. See [source-review documentation](pqscan_analysis/SOURCE_REVIEW.md)
+for resolution limits, source handling, and the JSON contract.
+
+## Requirement-grounded source review (milestone 3)
+
+Explicitly send bounded source excerpts and the partial NIST catalog to a
+downloaded local Ollama model (replace `YOUR_LOCAL_MODEL` with its installed name):
+
+```bash
+python3 pqscan.py examples/source_review --review-source \
+  --ollama-source YOUR_LOCAL_MODEL --format json -o reports/source-hypotheses.json
+
+# Review an existing snapshot without reopening the target repository
+python3 pqscan.py --from-json reports/source-review.json \
+  --ollama-source YOUR_LOCAL_MODEL --format json -o reports/saved-hypotheses.json
+```
+
+This sends exact code, including potentially sensitive literals and comments,
+only to the explicitly selected loopback service. `--ollama` and `--ollama-source`
+are mutually exclusive. Neither option downloads models or executes target code.
+The desktop GUI retains its existing metadata-only model option.
+
+The separate `source_llm_analysis` section contains **unverified hypotheses**
+with requirement IDs, excerpt IDs and checked line ranges, applicability reasoning,
+possible impact, assumptions and proposed validation. Hypotheses need not match
+an inventory rule. Unknown IDs, omitted excerpts, out-of-range citations,
+malformed output and claimed verified statuses are rejected. Citation validation
+does not establish that the model's interpretation is correct. No hypothesis
+changes the inventory, requirement verdicts, fusion assessment or `--fail-on` result.
+An empty hypothesis list does not establish conformance.
+
+JSON preserves the supplied evidence packet, catalog snapshot and hashes. Text
+and PDF show a separate hypothesis section. The packet is capped at 24,000
+serialized ASCII characters, including requirements and metadata; it can contain
+less source than the collection budget. Coverage counts disclose omissions.
+On model failure, JSON evidence is preserved and the command exits 2. Executable
+conformance checks are available through the separate milestone 4 runner below;
+requirement-level fusion and GUI integration are described below. See [source model review documentation](pqscan_analysis/LLM_REVIEW.md)
+for contracts, provenance and limits.
+
+## Isolated provider validation (milestone 4)
+
+This optional command tests a specific provider build, independently of repository
+scanning and model review. It supports **pqcrypto 0.3.4**, **ML-KEM-768** and
+**ML-DSA-65**, with 25 pinned public NIST vectors and eight derived negative tests.
+It does not execute application code or bind a passing provider to a repository's
+deployed dependency. That distinction remains explicit in every result.
+
+Prepare the dedicated image once (this explicit build downloads a digest-pinned
+Python base and checksum-locked wheels; supports Linux arm64/amd64):
+
+```bash
+docker build -t pqscan-validation:pqcrypto-0.3.4 validation/container
+```
+
+Then run the fixed suite without network access or a repository mount:
+
+```bash
+python3 -m pqscan_analysis.validation run \
+  --image pqscan-validation:pqcrypto-0.3.4 \
+  -o reports/provider-validation.json
+
+# Inspect saved evidence without execution
+python3 -m pqscan_analysis.validation read reports/provider-validation.json
+```
+
+The runner never builds or pulls images automatically. It resolves the image to
+an immutable ID, stages only its reviewed harness and vectors, and runs as a
+non-root user with a read-only root, dropped capabilities, no network, seccomp,
+and CPU/memory/process/time/output limits. There is no host-execution fallback.
+
+Results include individual oracles and observations, requirement references,
+vector revision/checksums, image ID, provider/native artifact hashes, runtime
+details and the execution command. Exit codes are **0** for all selected cases
+passing, **1** for test mismatches, and **2** for setup errors or inconclusive
+execution. A pass is scoped to those cases, not full NIST conformance or
+certification. Imported reports are labeled `imported_unverified`.
+
+Designated `--fixture zero-secret` and `--fixture accept-all-signatures` modes
+exercise known bad harness variants; their failures are not provider defects.
+See [validation documentation](validation/README.md) for reproduction, exact
+coverage, limitations and regression tests. The milestone 5 Requirement evidence view can import these reports.
+
+## Library implementation analysis (milestone 4b)
+
+The separate library CLI captures a repository without running it. The first
+build adapter supports OpenSSL's native **ML-KEM-768 decapsulation** and
+**ML-DSA-65 pure verification with contexts**, using the same 33 selected cases as
+milestone 4 through a reviewed EVP adapter.
+
+```bash
+# Any supported-size repository: manifest and adapter detection; no execution
+python3 -m pqscan_analysis.library inspect path/to/library -o reports/library-input.json
+
+# Explicit one-time toolchain preparation (requires network)
+docker build -t pqscan-library:openssl-portable-v1 validation/library-container
+
+# OpenSSL only: capture, build in isolation, index selected C, test exact binary
+python3 -m pqscan_analysis.library run repos_to_test/openssl \
+  --image pqscan-library:openssl-portable-v1 --timeout 900 \
+  -o reports/library-validation.json
+
+# Read and validate evidence without executing anything
+python3 -m pqscan_analysis.library read reports/library-validation.json
+```
+
+Build and test phases use separate restricted containers with no network. The
+original repository is never mounted; the build receives a captured read-only
+copy. Reports record file hashes (including untracked/ignored inputs), toolchain
+image identity, compiler commands, generated-file hashes, native function/call
+locations, selected source excerpts, artifact identity, test oracles and results.
+The exact binary and manifest are saved beside the JSON in a `.artifacts` folder.
+
+The C index uses libclang and the captured compile flags. Unsupported branches,
+assembly, headers, indirect dispatch and exhausted budgets remain coverage gaps.
+Passing cases do not establish whole-algorithm correctness or NIST certification.
+The recorded build chain is local provenance, not independent attestation.
+The milestone 5 view imports these results into the GUI, text and PDF with
+scoped outcomes and provenance. Native-source LLM review remains future work. See [library validation documentation](validation/LIBRARY_REVIEW.md)
+for supported revisions, mutations, limits and reproduction.
+
+## Requirement evidence and reports (milestone 5)
+
+The new `requirement_assessment` view reconciles inventory pointers, validated
+source-model hypotheses, library/provider test reports and reviewer triage notes.
+It keeps each source snapshot/artifact/backend separate, deduplicates repeated
+observations, and exposes conflicting outcomes for the same case and subject.
+
+```bash
+# Attach existing test evidence to an inventory/source scan; no target execution
+python3 pqscan.py path/to/repository --review-source \
+  --evidence reports/library-validation.json \
+  --pdf reports/combined-evidence.pdf
+
+# Open a library/provider report directly, with no inventory scan
+python3 pqscan.py --from-json reports/library-validation.json \
+  --evidence reports/another-library-result.json \
+  --pdf reports/implementation-evidence.pdf
+```
+
+Use **Load JSON** in the desktop app for scan, library or provider reports. The
+**Requirement evidence** tab shows per-requirement status, scoped case outcomes,
+source candidates, expected/observed values, provenance and coverage. Use
+**Import test evidence** or **Import reviewer notes**, then **Save evidence review
+as...** before exporting PDF. Attachments never run commands, rebuild code,
+contact Ollama or read a repository path saved in a report.
+
+Imported outcomes are labeled `reported_passed`, `reported_failed`,
+`reported_inconclusive` or `disputed`. Requirements with evidence remain
+`inconclusive`; those without evidence remain `not_assessed`. A self-consistent
+JSON is not authenticated execution evidence. No passing report, model text,
+reviewer disposition or edited derived status can grant verification. The ordinary
+inventory verdict and `--fail-on` behavior remain separate.
+
+See [evidence rules, reviewer-note format and reproduction](pqscan_analysis/EVIDENCE.md).
+
 ## Local Ollama review and PDF report
 
 Set up the optional PDF dependency in the scanner's environment:
@@ -157,7 +381,15 @@ This command:
 3. Validates the structured model response and adds it under `llm_analysis` in
    the JSON. The scanner assessment and findings remain unchanged.
 4. Builds `reports/readiness.pdf` from the same report, with an assessment,
-   model-assisted action plan, full finding inventory, coverage, and references.
+   model summary, grouped inventory counts, representative source locations,
+   scoped test outcomes, provenance, and coverage. Complete evidence stays in JSON.
+
+PDF export is concise by default in both the CLI and desktop app. It prints at
+most eight representative findings, groups skipped paths by reason, and summarizes
+requirement evidence instead of repeating every source pointer. Failed/error
+counts, conflicting test scopes, and fixture identities remain visible. Test
+counts include cases outside the partial requirement catalog. The PDF does not
+replace the complete JSON or searchable desktop evidence views.
 
 `--pdf` always creates a JSON sidecar, regardless of `--format`. Use `--output`
 to choose a different JSON filename. Output directories are created as needed;

@@ -1,0 +1,600 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "profile": {
+      "const": "pqscan-python-source-v1"
+    },
+    "status": {
+      "const": "collected"
+    },
+    "origin": {
+      "enum": [
+        "live_scan",
+        "imported_unverified"
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "atomic": {
+          "const": false
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/file"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "atomic",
+        "files"
+      ],
+      "additionalProperties": false
+    },
+    "symbols": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/symbol"
+      }
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope_id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "binding": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope_id",
+          "path",
+          "line",
+          "binding",
+          "target"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "calls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/call"
+      }
+    },
+    "potential_entrypoints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "distribution": {
+            "type": "string"
+          },
+          "constraint": {
+            "type": "string"
+          },
+          "status": {
+            "const": "declared_only"
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "distribution",
+          "constraint",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "source_slices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/slice"
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "partial": {
+          "const": true
+        },
+        "files_indexed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ast_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unresolved_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "external_boundaries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "reason",
+              "detail"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "scanner_skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "scanner_warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scanner_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_chars": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "slices_selected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "slices_omitted_or_truncated": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "symbol_id": {
+                "type": "string"
+              },
+              "reason": {
+                "enum": [
+                  "slice_budget",
+                  "slice_truncated"
+                ]
+              },
+              "omitted_lines": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "symbol_id",
+              "reason",
+              "omitted_lines"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "symbols_outside_selection": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "partial",
+        "files_indexed",
+        "ast_nodes",
+        "unresolved_calls",
+        "external_boundaries",
+        "gaps",
+        "scanner_skipped",
+        "scanner_warnings",
+        "scanner_errors",
+        "source_chars",
+        "slices_selected",
+        "slices_omitted_or_truncated",
+        "symbols_outside_selection"
+      ],
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_files": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_ast_nodes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_slices": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_slice_chars": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_source_chars": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_hops": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "max_files",
+        "max_bytes",
+        "max_ast_nodes",
+        "max_slices",
+        "max_slice_chars",
+        "max_source_chars",
+        "max_hops"
+      ],
+      "additionalProperties": false
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_policy": {
+      "type": "string"
+    },
+    "correctness_verified": {
+      "const": false
+    },
+    "compliance_certified": {
+      "const": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "profile",
+    "status",
+    "origin",
+    "snapshot",
+    "symbols",
+    "imports",
+    "calls",
+    "potential_entrypoints",
+    "dependencies",
+    "source_slices",
+    "coverage",
+    "limits",
+    "limitations",
+    "evidence_policy",
+    "correctness_verified",
+    "compliance_certified"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "file": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lines": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "language": {
+          "enum": [
+            "python",
+            "inventory_only"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "bytes",
+        "lines",
+        "language"
+      ],
+      "additionalProperties": false
+    },
+    "symbol": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "qualified_name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "module",
+            "function",
+            "async_function",
+            "class"
+          ]
+        },
+        "start_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "context": {
+          "enum": [
+            "production",
+            "test",
+            "example"
+          ]
+        },
+        "file_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "qualified_name",
+        "kind",
+        "start_line",
+        "end_line",
+        "context",
+        "file_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "properties": {
+        "distribution": {
+          "type": "string"
+        },
+        "implementation": {
+          "const": "external_or_native_uninspected"
+        },
+        "module": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "contract_status": {
+          "const": "not_verified"
+        }
+      },
+      "required": [
+        "distribution",
+        "implementation",
+        "module",
+        "symbol",
+        "contract_status"
+      ],
+      "additionalProperties": false
+    },
+    "call": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "caller_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expression": {
+          "type": "string"
+        },
+        "resolved_name": {
+          "type": "string"
+        },
+        "resolution": {
+          "enum": [
+            "local_candidate",
+            "external_boundary",
+            "unresolved"
+          ]
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/provider"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "caller_id",
+        "path",
+        "line",
+        "column",
+        "end_line",
+        "end_column",
+        "expression",
+        "resolved_name",
+        "resolution",
+        "target_id",
+        "reason",
+        "provider"
+      ],
+      "additionalProperties": false
+    },
+    "slice": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "symbol_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "start_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "file_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "selection_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "finding_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "symbol_id",
+        "path",
+        "start_line",
+        "end_line",
+        "text",
+        "sha256",
+        "file_sha256",
+        "selection_reasons",
+        "finding_ids"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

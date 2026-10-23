@@ -26,7 +26,7 @@ from urllib import error as urlerror, parse as urlparse, request as urlrequest
 from xml.sax.saxutils import escape
 
 
-VERSION = "1.3.0"
+VERSION = "1.9.0"
 NIST_PQC = "https://csrc.nist.gov/projects/post-quantum-cryptography"
 NIST_FAQ = NIST_PQC + "/faqs"
 FIPS203 = "https://csrc.nist.gov/pubs/fips/203/final"
@@ -551,6 +551,33 @@ def correctness_compliance(report):
     }
 
 
+def specification_review(report):
+    """Attach the optional requirements catalog; standalone inventory still works."""
+    try:
+        if not (Path(__file__).resolve().parent / "pqscan_analysis" / "requirements.py").is_file():
+            # Do not discover a similarly named package in the target/caller's cwd.
+            raise ModuleNotFoundError(name="pqscan_analysis")
+        from pqscan_analysis.requirements import build_specification_review
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"pqscan_analysis", "pqscan_analysis.requirements"}:
+            raise
+        return {
+            "schema_version": "1.0", "profile": "pqscan-specification-review-v1",
+            "status": "catalog_unavailable", "catalog": None, "sources": [], "requirements": [],
+            "coverage": {
+                "catalog_coverage": "unavailable", "requirements_total": 0,
+                "requirements_assessed": 0, "applicability_unknown": 0,
+                "repository_coverage_incomplete": report["coverage"]["incomplete"],
+                "excluded_topics": ["All specification requirements: optional catalog is unavailable."],
+            },
+            "basis": "current_catalog_and_inventory_only",
+            "correctness_verified": False, "compliance_certified": False,
+            "boundary": "Specification review is unavailable. Copy pqscan_analysis/ and standards/ alongside pqscan.py to include the catalog. Inventory alone cannot certify compliance.",
+        }
+    # A present but malformed/incomplete catalog is an error, not a silent pass.
+    return build_specification_review(report)
+
+
 def fusion_assessment(report):
     """Combine distinct static signals without promoting availability into proof.
 
@@ -623,6 +650,20 @@ def fusion_assessment(report):
             "next_steps": next_steps}
 
 
+def evidence_module(required=False):
+    if not (Path(__file__).resolve().parent / 'pqscan_analysis/evidence.py').is_file():
+        if required:
+            raise ValueError('Evidence fusion requires pqscan_analysis/ and standards/ beside pqscan.py')
+        return None
+    from pqscan_analysis import evidence
+    return evidence
+
+
+def requirement_assessment(report):
+    support = evidence_module(required='evidence_bundle' in report)
+    return support.reconcile(report) if support else None
+
+
 def matches_exclude(path: str, patterns: List[str]) -> bool:
     # Deliberately simple shell globs, not an incomplete imitation of gitignore.
     parts = path.split("/")
@@ -665,10 +706,21 @@ def read_regular_file(path: Path, limit: int) -> Tuple[Optional[bytes], Optional
     return data, None
 
 
-def scan_repository(root: Path, excludes=(), max_file_bytes=1024 * 1024, output_path=None):
+def source_review_module():
+    """Load source support only when explicitly requested, from this distribution."""
+    if not (Path(__file__).resolve().parent / "pqscan_analysis" / "source_index.py").is_file():
+        raise ValueError("Source review requires pqscan_analysis/ and standards/ alongside pqscan.py")
+    from pqscan_analysis import source_index
+    return source_index
+
+
+def scan_repository(root: Path, excludes=(), max_file_bytes=1024 * 1024, output_path=None,
+                    review_source=False, source_max_chars=24000):
     root = Path(root).expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"Repository path is not a directory: {root}")
+    source_support = source_review_module() if review_source else None
+    source_collector = source_support.Collector(max_source_chars=source_max_chars) if source_support else None
     patterns = list(excludes)
     errors, warnings, skipped, findings = [], [], [], []
     ignore_path = root / ".pqscanignore"
@@ -748,6 +800,8 @@ def scan_repository(root: Path, excludes=(), max_file_bytes=1024 * 1024, output_
             found, parse_warnings = analyze_source(source, relative)
             findings.extend(found)
             warnings.extend(parse_warnings)
+            if source_collector is not None:
+                source_collector.observe(relative, data, source, source_context(relative))
     findings.sort(key=lambda f: (SEVERITY_ORDER[f.severity], f.path, f.line, f.rule_id, f.evidence_kind))
     incomplete = incomplete or bool(errors) or bool(warnings) or any(s["reason"] == "symlink" for s in skipped)
     verdict = assessment(findings, incomplete)
@@ -767,6 +821,12 @@ def scan_repository(root: Path, excludes=(), max_file_bytes=1024 * 1024, output_
     }
     report["fusion_assessment"] = fusion_assessment(report)
     report["correctness_compliance"] = correctness_compliance(report)
+    report["specification_review"] = specification_review(report)
+    if source_collector is not None:
+        report["source_review"] = source_collector.build(report)
+        source_support.validate_source_review(report["source_review"], report["findings"])
+    view = requirement_assessment(report)
+    if view is not None: report['requirement_assessment'] = view
     return report
 
 
@@ -934,9 +994,10 @@ def validate_review(value, finding_ids):
     return value
 
 
-def review_with_ollama(report, model, base_url="http://127.0.0.1:11434", timeout=180):
+def local_review_model(model, base_url, timeout):
+    """Shared local-only model selection; never download or select remote models."""
     base_url = local_ollama_url(base_url)
-    if not model.strip() or "cloud" in model.lower():
+    if not isinstance(model, str) or not model.strip() or len(model) > 256 or "cloud" in model.lower():
         raise OllamaError("Choose a downloaded local Ollama model, not a cloud model")
     tags = ollama_request(base_url, "/api/tags", timeout=min(timeout, 15))
     if not isinstance(tags.get("models"), list):
@@ -947,6 +1008,30 @@ def review_with_ollama(report, model, base_url="http://127.0.0.1:11434", timeout
         raise OllamaError(f"Model {model!r} is not installed locally. Check 'ollama list'; models are never pulled automatically.")
     if installed.get("remote_host") or installed.get("remote_model") or not installed.get("size"):
         raise OllamaError("The selected model is a remote/cloud model; choose a downloaded local model")
+    return base_url, installed
+
+
+def source_llm_module():
+    if not Path(__file__).with_name("pqscan_analysis").joinpath("review.py").is_file():
+        raise ValueError("Source model review requires the optional pqscan_analysis package and standards directory")
+    from pqscan_analysis import review
+    return review
+
+
+def review_source_with_ollama(report, model, base_url="http://127.0.0.1:11434", timeout=180):
+    """Only called on explicit source-sharing opt-in; never promotes verdicts."""
+    try:
+        support = source_llm_module()
+        # Fail before contacting the server if there is no valid source packet.
+        support.build_requirement_evidence(report)
+        base_url, installed = local_review_model(model, base_url, timeout)
+        return support.run_review(report, model, base_url, installed, ollama_request, timeout)
+    except (ValueError, OSError, RecursionError) as exc:
+        raise OllamaError(str(exc)) from exc
+
+
+def review_with_ollama(report, model, base_url="http://127.0.0.1:11434", timeout=180):
+    base_url, installed = local_review_model(model, base_url, timeout)
     evidence = build_review_evidence(report)
     result = ollama_request(base_url, "/api/chat", {
         "model": model, "stream": False, "think": False, "format": REVIEW_SCHEMA,
@@ -991,8 +1076,18 @@ def save_json(report, path, replace=False):
 
 def load_report(path):
     """Read a scanner JSON report for re-rendering without touching the repo."""
-    with path.open(encoding="utf-8") as handle:
-        report = json.load(handle)
+    def unique_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result: raise ValueError('Duplicate key in report JSON')
+            result[key] = value
+        return result
+    with Path(path).open('rb') as handle:
+        raw = handle.read(64 * 1024 * 1024 + 1)
+    if len(raw) > 64 * 1024 * 1024: raise ValueError('Report exceeds 64 MiB')
+    report = json.loads(raw, object_pairs_hook=unique_keys)
+    if isinstance(report, dict) and report.get('tool') in ('pqscan-library', 'pqscan-validation'):
+        return evidence_module(required=True).wrap_execution(report)
     try:
         if not isinstance(report, dict) or report["tool"] != "pqscan" or report["schema_version"] != "1.0":
             raise ValueError("Expected a PQScan schema 1.0 JSON report")
@@ -1048,11 +1143,26 @@ def load_report(path):
     # Recompute derived evidence; imported JSON cannot grant itself validation.
     report["fusion_assessment"] = fusion_assessment(report)
     report["correctness_compliance"] = correctness_compliance(report)
+    report["specification_review"] = specification_review(report)
+    if "source_review" in report:
+        source_review_module().validate_source_review(report["source_review"], report["findings"])
+        # A self-consistent saved snapshot is not authenticated against live code.
+        # Do not follow the saved repository path or transmit its source to Ollama.
+        report["source_review"]["origin"] = "imported_unverified"
+    if "source_llm_analysis" in report:
+        source_llm_module().validate_saved_review(report["source_llm_analysis"], report)
+        if report["source_llm_analysis"]["status"] == "completed":
+            report["source_llm_analysis"]["origin"] = "imported_unverified"
+    if 'evidence_bundle' in report:
+        report['evidence_bundle'] = evidence_module(required=True).normalize_bundle(report['evidence_bundle'])
+    view = requirement_assessment(report)
+    report.pop('requirement_assessment', None)
+    if view is not None: report['requirement_assessment'] = view
     return report
 
 
 def render_pdf(report, path):
-    """Render a complete report with a clearly separated model review."""
+    """Render a bounded print review; preserve exhaustive evidence in JSON."""
     try:
         from reportlab.lib import colors
         from reportlab.lib.styles import ParagraphStyle
@@ -1083,121 +1193,148 @@ def render_pdf(report, path):
     def p(value, style="body"):
         return Paragraph(safe(value), styles[style])
 
-    story = [p("PQSCAN / CRYPTOGRAPHIC INVENTORY", "tag"), p("Post-quantum\nreadiness review", "title"),
-             p(report["repository"], "small"), p("Scan date: " + report["generated_at"], "small"), Spacer(1, 12)]
-    verdict = report["assessment"]
-    summary = report["summary"]
-    status = verdict["status"].upper().replace("_", " ")
-    panel = Table([[p(status, "h2")], [p(verdict["reason"])]], colWidths=[width])
-    panel.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), light), ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#D6E4E6")),
-                               ("LEFTPADDING", (0, 0), (-1, -1), 14), ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-                               ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
-    story.extend([panel, Spacer(1, 18)])
-    metrics = [("FILES SCANNED", summary["files_scanned"]), ("TOTAL FINDINGS", summary["findings"]),
-               ("PRODUCTION RISKS", verdict["production_quantum_vulnerable"]), ("PQC EVIDENCE", verdict["production_pqc_evidence"])]
-    table = Table([[p(label, "small") for label, _ in metrics], [p(str(count), "h1") for _, count in metrics]], colWidths=[width / 4] * 4)
-    table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.HexColor("#D6E4E6"))]))
-    story.extend([table, Spacer(1, 18), p("How to read this report", "h1"),
-                  p("The assessment and evidence inventory come from deterministic scanner rules. Model commentary is advisory and cannot change those findings or certify quantum readiness."),
-                  p("Production risks and PQC evidence count findings in production calls/configuration, not unique vulnerabilities or deployed cryptographic operations."),
-                  p("Scan coverage: " + ("INCOMPLETE - review coverage details." if report["coverage"]["incomplete"] else "Completed within the configured scope; exclusions and unsupported file types still apply."))])
-    review = report.get("llm_analysis", {"status": "not_requested"})
-    if review["status"] == "completed":
-        story.extend([p("Local model review", "h1"), p("Model: " + review["model"], "small"),
-                      p(f"Evidence supplied: {review['findings_sent']} findings; omitted from model prompt: {review['findings_omitted']}. All findings remain in the evidence inventory.", "small"),
-                      p(review["analysis"]["executive_summary"]),
-                      PageBreak(), p("Model-assisted action plan", "h1"),
-                      p("AI-generated recommendations. Verify against the cited findings and deployed implementation.", "small")])
-        for index, priority in enumerate(review["analysis"]["priorities"], 1):
-            story.extend([p(f"{index:02d} / {priority['title']}", "h2"), p("Evidence: " + ", ".join(priority["finding_ids"]), "small"),
-                          p(priority["reason"]), p("Action: " + priority["action"])])
-        if not review["analysis"]["priorities"]:
-            story.append(p("No evidence-linked priorities were proposed."))
-        for title, key in (("Validation steps", "validation_steps"), ("Uncertainties to resolve", "uncertainties")):
-            story.append(p(title, "h2"))
-            for item in review["analysis"][key]:
-                story.append(p("- " + item))
-    else:
-        story.extend([p("Local model review", "h1"), p("Status: " + review["status"].replace("_", " "))])
-        if review["status"] == "not_requested":
-            story.append(p("No model review was requested. This report contains the scanner evidence and rule-based recommendations."))
-        else:
-            story.append(p(review.get("error", "The model review did not finish. The static scan remains available.")))
+    # The PDF is a bounded review, not a dump of the JSON evidence graph.
+    # Bound both row counts and cell text so repository size cannot grow pages
+    # without limit. All original records remain available in JSON and the GUI.
+    def brief(value, limit=280):
+        value = str(value)
+        return value if len(value) <= limit else value[:limit] + " ... [abridged; see JSON]"
 
+    def table(headers, rows, fractions):
+        cells = [[p(h, "small") for h in headers]]
+        cells.extend([[p(brief(v), "small") for v in row] for row in rows])
+        result = Table(cells, colWidths=[width * f for f in fractions], repeatRows=1)
+        result.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), light),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LINEBELOW", (0, 0), (-1, 0), .5, muted),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        return result
+
+    evidence_only = report.get("report_kind") == "execution_evidence_view"
+    view = requirement_assessment(report)
     fusion = fusion_assessment(report)
-    story.extend([PageBreak(), p("Fusion assessment", "h1"), p(fusion["label"], "h2"), p(fusion["reason"]),
-                  p("This profile combines declarations, implementation, configuration and counterevidence. Repeated references to the same source site are not independent validation votes.", "small")])
-    for signal in fusion["signals"].values():
-        story.extend([p(f"{signal['label']}: {signal['sites']} site(s)", "h2"), p(signal["explanation"])])
-        if signal["finding_ids"]:
-            story.append(p("Evidence: " + ", ".join(signal["finding_ids"]), "small"))
-    story.extend([p("Verification boundary", "h2"),
-                  p("Runtime verification: not performed. Implementation tests: not executed. Security review: not performed. Certification: not issued."),
-                  p(fusion["model_role"], "small"), p("Next verification steps", "h2")])
-    story.extend(p("- " + step) for step in fusion["next_steps"])
-    compliance = correctness_compliance(report)
-    story.extend([PageBreak(), p("Correctness and NIST compliance", "h1"),
-                  p(compliance["status"].replace("_", " ").upper(), "h2"), p(compliance["reason"]),
-                  p(compliance["boundary"], "small")])
-    parameter_rows = [[p("ALGORITHM", "small"), p("APPROVED PARAMETER SETS", "small"), p("STATIC OBSERVATION", "small")]]
-    for name, item in compliance["algorithms"].items():
-        observation = ", ".join(item["observed_parameter_sets"]) or item["status"].replace("_", " ")
-        if item["unresolved_finding_ids"]:
-            observation += "; unresolved: " + ", ".join(item["unresolved_finding_ids"])
-        parameter_rows.append([p(name + " / " + item["standard"], "small"),
-                               p(", ".join(item["approved_parameter_sets"]), "small"), p(observation, "small")])
-    parameter_table = Table(parameter_rows, colWidths=[width * 0.20, width * 0.50, width * 0.30], repeatRows=1)
-    parameter_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), light), ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#D6E4E6")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D6E4E6")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    story.extend([parameter_table, Spacer(1, 12), p("Required validation evidence", "h2")])
-    for control in compliance["controls"].values():
-        story.extend([p(f"{control['label']}: {control['status'].replace('_', ' ')}", "h2"),
-                      p(control["requirement"]), p(control["interpretation"], "small")])
-        if control["finding_ids"]:
-            story.append(p("Production evidence: " + ", ".join(control["finding_ids"]), "small"))
-        if control["nonproduction_finding_ids"]:
-            story.append(p("Test/example evidence (not executed): " + ", ".join(control["nonproduction_finding_ids"]), "small"))
-    story.extend([p("Executed conformance boundary", "h2"),
-                  p("Known-answer tests: not executed. Negative tests: not executed. Interoperability tests: not executed. ACVP/CAVP validation: not verified. FIPS-validated module: not verified."),
-                  p("Correctness verified: no. Compliance certified: no.", "small")])
-    if compliance["unrecognized_parameter_findings"]:
-        story.append(p("Unrecognized parameter evidence: " + ", ".join(compliance["unrecognized_parameter_findings"]), "small"))
-    story.extend([PageBreak(), p("Evidence inventory", "h1"),
-                  p("Every finding is retained, including imports, dependencies, tests and examples. Source locations are relative to the scanned repository.", "small")])
-    if not report["findings"]:
-        story.append(p("No recognized cryptographic evidence was found. This is not proof of quantum readiness."))
-    for f in report["findings"]:
-        # Keep the short heading with its locator, while allowing long paths and
-        # recommendations to flow naturally across pages.
-        story.append(p(f"{f['finding_id']}  /  {f['severity'].upper()}  /  {f['algorithm']}", "h2"))
-        story.append(p(f"{f['path']}:{f['line']}:{f['column']}", "small"))
-        story.append(p(f"{f['rule_id']} | {f['context']} | {f['evidence_kind']} | confidence: {f['confidence']} | category: {f['category']}", "small"))
-        story.append(p("Matched evidence: " + f["evidence"]))
-        story.append(p("Suggested next step: " + f["recommendation"]))
-        story.append(Spacer(1, 5))
+    summary = report["summary"]
+    findings = report["findings"]
+    story = [p("PQSCAN / CONCISE EVIDENCE REVIEW", "tag"),
+             p("Implementation evidence" if evidence_only else "Repository review", "title"),
+             p(brief(report["repository"]), "small"), p("Scan date: " + report["generated_at"], "small"),
+             p("Verdict", "h1"),
+             p("Imported implementation test evidence" if evidence_only else fusion["label"], "h2"),
+             p("Inventory was not run." if evidence_only else brief(fusion["reason"])),
+             p("Full NIST conformance: not established. Exploitability: not assessed."),
+             p("For a library, providing classical algorithms alongside PQC does not by itself demonstrate a PQC implementation defect. Inventory matches are review pointers; deployment and reachability remain unknown.", "small"),
+             table(["FILES", "INVENTORY MATCHES", "SKIPPED PATHS"],
+                   [[summary["files_scanned"], summary["findings"], summary["files_or_directories_skipped"]]], [.3, .4, .3]),
+             p("Selected test results", "h1")]
+    tests = [e for e in view["evidence"] if e["kind"] == "test"] if view else []
+    if view and view["subjects"]:
+        rows = []
+        for subject in view["subjects"]:
+            counts = Counter(e["case"]["status"] for e in tests if e["subject_id"] == subject["id"])
+            rows.append([subject["id"], counts["passed"], counts["failed"], counts["error"],
+                         ", ".join(sorted(set(subject["reported_run_states"])))])
+        story.append(table(["SUBJECT", "PASS", "FAIL", "ERROR", "RUN STATES"], rows, [.4, .12, .12, .12, .24]))
+        conflicts = sum(bool(g["contradictory_case_ids"]) for r in view["requirements"] for g in r["test_scopes"])
+        story.append(p(f"Conflicting requirement/test scopes: {conflicts}. Counts are distinct reported observations per subject; repeated imports are deduplicated. Different builds remain separate.", "small"))
+        story.append(p("Imported reports are unauthenticated. Passing selected cases does not verify a whole requirement or bind the tested artifact to a deployment.", "small"))
+    else:
+        story.append(p("No execution evidence attached. Static matches do not establish test success."))
+    story.extend([p("About this PDF", "h2"), p("This concise report groups repeated matches and limits examples. Complete findings, case oracles and observations, source locations, reviewer notes, and skipped paths remain in the saved JSON and desktop evidence views. Omitted examples are not dismissed findings.", "small")])
 
-    story.extend([PageBreak(), p("Coverage and limitations", "h1"),
-                  p(f"Scanned files: {summary['files_scanned']}. Skipped files/directories: {summary['files_or_directories_skipped']}.")])
+    if view:
+        story.extend([PageBreak(), p("Requirement evidence", "h1"),
+                      p(f"{view['coverage']['requirements_total']} catalog requirements; {view['coverage']['requirements_verified']} fully verified. Applicability remains unknown.", "small")])
+        rows = []
+        for row in view["requirements"]:
+            outcomes = Counter(g["outcome"] for g in row["test_scopes"])
+            rows.append([row["requirement"]["id"], row["status"],
+                         "; ".join(f"{k}: {v} scope(s)" for k, v in sorted(outcomes.items())) or "No mapped tests",
+                         len(row["evidence_ids"])])
+        story.append(table(["REQUIREMENT", "STATUS", "REPORTED TESTS", "RECORDS"], rows, [.31, .18, .36, .15]))
+        disputed = sum(r["review_disputed"] for r in view["requirements"])
+        story.append(p(f"Reviewer disputes: {disputed}; unmerged evidence records: {len(view['coverage']['unmerged_evidence'])}. All notes remain in JSON.", "small"))
+        adverse = [e for e in tests if e["case"]["status"] != "passed"]
+        story.append(p(f"Failed or errored observations: {len(adverse)}", "h2"))
+        for e in adverse[:6]:
+            c = e["case"]
+            story.append(p(brief(f"{e['subject_id']} / {c['id']} / {c['status']}: expected {c['expected']['value']}; observed {c['observation']['value']}", 400), "small"))
+        if len(adverse) > 6:
+            story.append(p(f"{len(adverse) - 6} additional adverse observations retained in JSON.", "small"))
+        story.extend([PageBreak(), p("Test provenance", "h1")])
+        for subject in view["subjects"]:
+            story.append(p(subject["id"] + " / " + subject["kind"], "h2"))
+            for label, key in (("Backend", "backend"), ("Source snapshot", "snapshot_id"), ("Artifact", "artifact"), ("Image", "image_id")):
+                story.append(p(label + ": " + brief(subject.get(key), 180), "small"))
+            story.append(p("Run states: " + ", ".join(sorted(set(subject["reported_run_states"]))), "small"))
+            if subject["mutation"]:
+                story.append(p("DESIGNATED SOURCE FIXTURE: " + brief(subject["mutation"]["name"]), "h2"))
+            if subject["kind"] == "provider" and subject["fixture"] != "provider":
+                story.append(p("DESIGNATED HARNESS FIXTURE: " + brief(subject["fixture"]), "h2"))
+            for error in subject["errors"][:2]:
+                story.append(p("Setup error: " + brief(error), "small"))
+            gaps = sum(len(c.get("gaps", [])) for c in subject["coverage"])
+            story.append(p(f"Native coverage records: {gaps}. Cases outside catalog mapping: {len(set(subject['unmapped_case_ids']))}. Full recipes, identities, errors and coverage are in JSON.", "small"))
+        if not view["subjects"]:
+            story.append(p("No execution subject supplied."))
+        story.append(p("Catalog: " + view["catalog"]["id"] + " / " + view["catalog"]["version"], "small"))
+        story.append(p("Outside scope: " + brief("; ".join(view["coverage"]["excluded_topics"]), 700), "small"))
+
+    if not evidence_only:
+        story.extend([PageBreak(), p("Inventory by algorithm", "h1"),
+                      p("Counts describe matched source locations, including tests and examples. They are not counts of confirmed vulnerabilities.", "small")])
+        groups = Counter(f["algorithm"] for f in findings)
+        ranked = sorted(groups.items(), key=lambda pair: (-pair[1], pair[0]))
+        rows = [[name, count] for name, count in ranked[:20]]
+        if len(ranked) > 20:
+            rows.append([f"Other algorithms ({len(ranked) - 20} groups)", sum(n for _, n in ranked[20:])])
+        story.append(table(["ALGORITHM / SIGNAL", "MATCHES"], rows or [["None", 0]], [.8, .2]))
+        story.extend([PageBreak(), p("Representative source locations", "h1"),
+                      p("At most eight examples, one per rule/context group, with PQC/specification signals first, then severity and source location. These are inventory pointers, not confirmed bugs. Full details remain searchable in the app.", "small")])
+        examples, seen = [], set()
+        for f in sorted(findings, key=lambda f: (0 if f["category"] in {"pqc", "compliance_gap", "compliance_evidence"} else 1, {"high": 0, "medium": 1, "low": 2, "info": 3}.get(f["severity"], 4), f["path"], f["line"], f["finding_id"])):
+            key = (f["rule_id"], f["context"])
+            if key not in seen:
+                seen.add(key)
+                examples.append(f)
+            if len(examples) == 8:
+                break
+        for f in examples:
+            story.append(p(brief(f"{f['finding_id']} / {f['algorithm']} / {f['severity']} / {f['context']}", 140), "h2"))
+            story.append(p(brief(f"{f['path']}:{f['line']}:{f['column']}", 180), "small"))
+            story.append(p("Matched: " + brief(f["evidence"], 160), "small"))
+        story.append(p(f"Showing {len(examples)} of {len(findings)} findings; {len(findings) - len(examples)} additional records retained in JSON.", "small"))
+
+    story.extend([PageBreak(), p("Coverage and limitations", "h1")])
     coverage = report["coverage"]
-    for title, key in (("Default directory exclusions", "default_excluded_directories"), ("Additional exclusions", "exclude_patterns")):
-        story.append(p(title + ": " + (", ".join(coverage.get(key, [])) or "None"), "small"))
-    for message in coverage["warnings"] + coverage["errors"]:
-        story.append(p("Scan warning: " + message))
-    if coverage["skipped"]:
-        story.append(p("Skipped paths", "h2"))
-        for item in coverage["skipped"]:
-            story.append(p(item["path"] + " - " + item["reason"], "small"))
-    story.append(p("Interpretation limits", "h2"))
-    for limitation in report["limitations"]:
-        story.append(p("- " + limitation))
-    story.append(p("Standards and references", "h2"))
-    for reference in sorted({f["reference"] for f in report["findings"]} or {NIST_PQC}):
-        story.append(p(reference, "small"))
+    story.append(p("Inventory coverage: " + ("incomplete" if coverage["incomplete"] else "completed within configured scope")))
+    reasons = Counter(item["reason"] for item in coverage["skipped"])
+    rows = sorted(reasons.items(), key=lambda pair: (-pair[1], pair[0]))
+    shown = rows[:8]
+    if len(rows) > 8:
+        shown.append(("Other skip reasons", sum(n for _, n in rows[8:])))
+    if shown:
+        story.append(table(["SKIP REASON", "PATHS"], shown, [.8, .2]))
+    notices = coverage["errors"] + coverage["warnings"]
+    story.append(p(f"Scan errors/warnings: {len(notices)}; showing at most three. Full exclusions and path details are in JSON.", "small"))
+    for notice in notices[:3]:
+        story.append(p(brief(notice), "small"))
+    story.extend([p("Next checks", "h2"),
+                  p("Extend vectors and negative cases across algorithms, parameter sets and operations. Review randomness, side channels, key lifecycle and application integration separately. No exploitability or certification claim follows from this report.", "small")])
+    review = report.get("llm_analysis", {"status": "not_requested"})
+    story.append(p("Local model review: " + review["status"], "h2"))
+    if review["status"] == "completed":
+        story.append(p(brief(review["analysis"]["executive_summary"], 600), "small"))
+        story.append(p("Advisory summary only; complete priorities and uncertainties are in JSON.", "small"))
+    elif review.get("error"):
+        story.append(p(brief(review["error"]), "small"))
+    if "source_llm_analysis" in report:
+        source_review = report["source_llm_analysis"]
+        source_llm_module().validate_saved_review(source_review, report)
+        story.append(p("Source model review: " + source_review["status"], "h2"))
+        story.append(p("Hypotheses are unverified. Full cited claims, assumptions and proposed tests remain in JSON and the app.", "small"))
+    story.append(p("Standards: FIPS 203 (ML-KEM), FIPS 204 (ML-DSA), FIPS 205 (SLH-DSA). The requirement catalog and complete references remain in JSON.", "small"))
 
     def page_frame(canvas, doc):
         canvas.saveState()
@@ -1205,14 +1342,14 @@ def render_pdf(report, path):
         canvas.line(44, 43, A4[0] - 44, 43)
         canvas.setFillColor(muted)
         canvas.setFont("Helvetica", 8)
-        canvas.drawString(44, 29, "PQScan | Static evidence and advisory analysis | Not a certification")
+        canvas.drawString(44, 29, "PQScan | Scoped evidence review | Not a certification")
         canvas.drawRightString(A4[0] - 44, 29, str(doc.page))
         canvas.restoreState()
 
     # Build in memory so layout failures do not leave a corrupt output PDF.
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=44, leftMargin=44,
-                            topMargin=42, bottomMargin=60, title="PQScan post-quantum readiness review", author="PQScan")
+                            topMargin=42, bottomMargin=60, title="PQScan implementation evidence review" if evidence_only else "PQScan post-quantum readiness review", author="PQScan")
     doc.build(story, onFirstPage=page_frame, onLaterPages=page_frame)
     with path.open("xb") as handle:
         handle.write(buffer.getvalue())
@@ -1230,7 +1367,9 @@ def render_text(report) -> str:
              f"Repository: {terminal_safe(report['repository'])}", "",
              f"Assessment: {verdict['status'].upper().replace('_', ' ')}", verdict["reason"],
              f"Scanned {summary['files_scanned']} files | {summary['findings']} findings | {summary['files_or_directories_skipped']} skipped files/directories",
-             "Static evidence only; quantum readiness is not certified.", ""]
+             "Inventory evidence is static; attached tests remain scoped reported outcomes. Quantum readiness is not certified.", ""]
+    if report.get('report_kind') == 'execution_evidence_view':
+        lines.insert(0, 'Implementation evidence view: inventory was not run; imported test outcomes are unauthenticated.')
     fusion = fusion_assessment(report)
     lines.extend(["Fusion assessment: " + fusion["label"], fusion["reason"],
                   "  " + " | ".join(f"{s['label']}: {s['sites']}" for s in fusion["signals"].values()),
@@ -1241,8 +1380,25 @@ def render_text(report) -> str:
     for name, item in compliance["algorithms"].items():
         observed = ", ".join(item["observed_parameter_sets"]) or item["status"].replace("_", " ")
         lines.append(f"  {name} ({item['standard']}): {observed}")
-    lines.extend(["  Known-answer, negative and interoperability tests: not executed.",
+    lines.extend(["  Inventory profile: known-answer, negative and interoperability tests not executed by scanning; attached results appear separately below.",
                   "  Correctness verified: no. Compliance certified: no.", ""])
+    specification = specification_review(report)
+    lines.append("Specification review: " + specification["status"].upper().replace("_", " "))
+    if specification["catalog"]:
+        catalog = specification["catalog"]
+        coverage = specification["coverage"]
+        lines.append(f"  Catalog: {catalog['id']} v{catalog['version']} (partial)")
+        lines.append(f"  {coverage['requirements_total']} requirements listed; 0 assessed; applicability remains unknown.")
+    lines.extend(["  " + specification["boundary"], ""])
+    if "source_review" in report:
+        source = source_review_module().validate_source_review(report["source_review"], report["findings"])
+        cov = source["coverage"]
+        lines.extend([
+            "Python source evidence: " + source["origin"].replace("_", " "),
+            f"  {len(source['symbols'])} symbols; {len(source['calls'])} calls; {cov['slices_selected']} source excerpts ({cov['source_chars']} characters).",
+            f"  {cov['unresolved_calls']} unresolved calls; {cov['external_boundaries']} external boundaries; coverage is partial.",
+            "  Source is retained in JSON. --ollama remains metadata-only; --ollama-source explicitly shares excerpts locally.", "",
+        ])
     for f in report["findings"]:
         lines.extend([
             f"[{f['severity'].upper()}] {f['rule_id']} {f['algorithm']} ({f['category']})",
@@ -1271,6 +1427,17 @@ def render_text(report) -> str:
             lines.append(f"Model prompt: {review['findings_sent']} findings supplied, {review['findings_omitted']} omitted.")
         elif review.get("error"):
             lines.append(terminal_safe(review["error"]))
+    if "source_llm_analysis" in report:
+        support = source_llm_module()
+        support.validate_saved_review(report["source_llm_analysis"], report)
+        lines += [""] + [terminal_safe(line) for line in support.summary_lines(report["source_llm_analysis"])]
+    view = requirement_assessment(report)
+    if view is not None:
+        support = evidence_module(required=True)
+        lines += [''] + [terminal_safe(line) for line in support.summary_lines(view)]
+        for row in view['requirements']:
+            if row['evidence_ids']:
+                lines += [''] + [terminal_safe(line) for line in support.detail_lines(view, row['requirement']['id'])]
     lines.extend(["", "Review before claiming readiness:",
                   "  Confirm reachable production paths, deployed providers, negotiation and fallback.",
                   "  Review authentication, key management, dependencies and implementation correctness.",
@@ -1311,13 +1478,27 @@ def main(argv=None) -> int:
     parser.add_argument("--exclude", action="append", default=[], metavar="GLOB", help="exclude a relative path or glob; repeatable")
     parser.add_argument("--max-file-bytes", type=positive_int, default=1024 * 1024, help="maximum input file size (default: 1048576)")
     parser.add_argument("--fail-on", choices=("none", "high", "medium", "low"), default="none", help="CI: exit 1 for production findings at or above severity; incomplete coverage exits 2 (default: none)")
-    parser.add_argument("--ollama", metavar="MODEL", help="add advisory analysis using a downloaded local Ollama model")
+    models = parser.add_mutually_exclusive_group()
+    models.add_argument("--ollama", metavar="MODEL", help="add metadata-only advisory analysis using a downloaded local Ollama model")
+    models.add_argument("--ollama-source", metavar="MODEL", help="explicitly send bounded source excerpts (possibly sensitive) and NIST requirements to a local model for unverified hypotheses; requires --review-source or saved source evidence")
+    parser.add_argument("--review-source", action="store_true", help="collect bounded Python source excerpts and candidate call paths in local JSON; source reaches a model only with --ollama-source")
+    parser.add_argument("--source-max-chars", type=positive_int, default=24000, help="total source excerpt character budget, 1-24000 (requires --review-source)")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434", help="loopback Ollama server URL (default: http://127.0.0.1:11434)")
     parser.add_argument("--ollama-timeout", type=positive_int, default=180, metavar="SECONDS", help="model request timeout (default: 180)")
     parser.add_argument("--pdf", type=Path, metavar="PATH", help="write a PDF and a JSON sidecar; --output overrides the JSON path (requires ReportLab)")
+    parser.add_argument('--evidence', type=Path, action='append', default=[], help='attach a saved library/provider test report as unauthenticated evidence; repeatable; never execute it')
+    parser.add_argument('--review-decisions', type=Path, help='import bounded reviewer triage notes with checked evidence references; cannot grant verification')
     args = parser.parse_args(argv)
     if bool(args.repository) == bool(args.from_json):
         parser.error("provide either a repository path or --from-json, not both")
+    if args.review_source and args.from_json:
+        parser.error("--review-source requires a live repository scan; saved reports are never used to locate source files")
+    if args.source_max_chars != 24000 and not args.review_source:
+        parser.error("--source-max-chars requires --review-source")
+    if args.ollama_source and not (args.review_source or args.from_json):
+        parser.error("--ollama-source requires --review-source or --from-json with source evidence")
+    if args.ollama_source is not None and (not args.ollama_source.strip() or len(args.ollama_source) > 256):
+        parser.error("--ollama-source requires a nonempty model name of at most 256 characters")
     try:
         output = args.output.expanduser().absolute() if args.output else None
         pdf_path = args.pdf.expanduser().absolute() if args.pdf else None
@@ -1331,14 +1512,19 @@ def main(argv=None) -> int:
         for path in (output, pdf_path):
             if path is not None and (path.exists() or path.is_symlink()):
                 raise ValueError(f"Output already exists; choose a new report path: {path}")
-        if args.ollama:
+        if args.ollama or args.ollama_source:
             local_ollama_url(args.ollama_url)
         report = (load_report(args.from_json.expanduser()) if args.from_json
-                  else scan_repository(Path(args.repository), args.exclude, args.max_file_bytes, output))
+                  else scan_repository(Path(args.repository), args.exclude, args.max_file_bytes, output,
+                                       review_source=args.review_source, source_max_chars=args.source_max_chars))
+        if args.evidence or args.review_decisions:
+            evidence_module(required=True).add_reports(report, args.evidence, args.review_decisions)
         if args.ollama:
             report["llm_analysis"] = {"status": "pending", "provider": "ollama", "model": args.ollama}
         elif pdf_path:
             report.setdefault("llm_analysis", {"status": "not_requested"})
+        if args.ollama_source:
+            report["source_llm_analysis"] = {"status": "pending", "provider": "ollama", "model": args.ollama_source}
         for path in (output, pdf_path):
             if path:
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -1357,6 +1543,19 @@ def main(argv=None) -> int:
                 print(f"Ollama review failed: {terminal_safe(exc)}", file=sys.stderr)
             if checkpoint:
                 save_json(report, output, replace=True)
+        if args.ollama_source:
+            print(f"Reviewing bounded source excerpts with local Ollama model {terminal_safe(args.ollama_source)}...", file=sys.stderr)
+            try:
+                report["source_llm_analysis"] = review_source_with_ollama(report, args.ollama_source, args.ollama_url, args.ollama_timeout)
+            except OllamaError as exc:
+                report["source_llm_analysis"] = {"status": "failed", "provider": "ollama", "model": args.ollama_source, "error": str(exc)[:2000]}
+                review_failed = True
+                print(f"Source model review failed: {terminal_safe(exc)}", file=sys.stderr)
+            if checkpoint:
+                save_json(report, output, replace=True)
+        view = requirement_assessment(report)
+        if view is not None: report['requirement_assessment'] = view
+        if checkpoint: save_json(report, output, replace=True)
         rendered = json.dumps(report, indent=2, ensure_ascii=True) + "\n" if args.format == "json" else render_text(report)
         if output and not checkpoint:
             with output.open("x", encoding="utf-8") as handle:

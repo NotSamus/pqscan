@@ -1,0 +1,380 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "profile": {
+      "const": "pqscan-specification-review-v1"
+    },
+    "status": {
+      "enum": [
+        "requirements_not_assessed",
+        "catalog_unavailable"
+      ]
+    },
+    "catalog": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "reviewed_on": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "sha256",
+            "reviewed_on"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      },
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "requirement": {
+            "$ref": "#/$defs/requirement"
+          },
+          "status": {
+            "const": "not_assessed"
+          },
+          "applicability_status": {
+            "const": "unknown"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "inventory_only"
+              },
+              "production_finding_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^F\\d+$"
+                },
+                "minItems": 0,
+                "uniqueItems": true
+              },
+              "nonproduction_finding_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^F\\d+$"
+                },
+                "minItems": 0,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "kind",
+              "production_finding_ids",
+              "nonproduction_finding_ids"
+            ],
+            "additionalProperties": false
+          },
+          "exploitability": {
+            "const": "not_assessed"
+          }
+        },
+        "required": [
+          "requirement",
+          "status",
+          "applicability_status",
+          "reason",
+          "evidence",
+          "exploitability"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "catalog_coverage": {
+          "enum": [
+            "partial",
+            "unavailable"
+          ]
+        },
+        "requirements_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requirements_assessed": {
+          "const": 0
+        },
+        "applicability_unknown": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repository_coverage_incomplete": {
+          "type": "boolean"
+        },
+        "excluded_topics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "catalog_coverage",
+        "requirements_total",
+        "requirements_assessed",
+        "applicability_unknown",
+        "repository_coverage_incomplete",
+        "excluded_topics"
+      ],
+      "additionalProperties": false
+    },
+    "basis": {
+      "const": "current_catalog_and_inventory_only"
+    },
+    "correctness_verified": {
+      "const": false
+    },
+    "compliance_certified": {
+      "const": false
+    },
+    "boundary": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "profile",
+    "status",
+    "catalog",
+    "sources",
+    "requirements",
+    "coverage",
+    "basis",
+    "correctness_verified",
+    "compliance_certified",
+    "boundary"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "source": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publication_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "edition": {
+          "const": "final"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "publication_url": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reviewed_on": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "errata": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "reviewed",
+                "none_listed"
+              ]
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^https://[^\\s]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "checked_on": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "disposition": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "status",
+            "url",
+            "sha256",
+            "checked_on",
+            "disposition"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "publication_date",
+        "edition",
+        "url",
+        "publication_url",
+        "sha256",
+        "reviewed_on",
+        "errata"
+      ],
+      "additionalProperties": false
+    },
+    "requirement": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]+(?:-[A-Z0-9]+)+$"
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "algorithm": {
+          "enum": [
+            "ML-KEM",
+            "ML-DSA",
+            "SLH-DSA"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "obligation": {
+          "enum": [
+            "shall",
+            "must",
+            "algorithm_definition",
+            "recommendation",
+            "project_policy"
+          ]
+        },
+        "applicability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_behavior": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verification_methods": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "provider_contract_review",
+              "negative_tests",
+              "known_answer_tests",
+              "randomness_failure_tests",
+              "protocol_review",
+              "protocol_negative_tests",
+              "key_lifecycle_tests"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "reviewed_on": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "errata_disposition": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "locator",
+        "algorithm",
+        "title",
+        "obligation",
+        "applicability",
+        "expected_behavior",
+        "verification_methods",
+        "reviewed_on",
+        "errata_disposition"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

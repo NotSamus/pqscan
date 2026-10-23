@@ -171,7 +171,7 @@ class MainWindow(QMainWindow):
         self.model_status = label("Optional. Your source files stay local.", "muted", True)
         box.addWidget(self.model_status)
         box.addSpacing(14)
-        self.pdf_check = QCheckBox("Create PDF alongside JSON")
+        self.pdf_check = QCheckBox("Create concise PDF alongside full JSON")
         self.pdf_check.setChecked(True)
         box.addWidget(self.pdf_check)
         self.start_button = QPushButton("Analyze repository")
@@ -210,7 +210,7 @@ class MainWindow(QMainWindow):
         self.load_button = QPushButton("Load JSON")
         self.load_button.clicked.connect(self.choose_report)
         header.addWidget(self.load_button)
-        self.export_button = QPushButton("Export PDF")
+        self.export_button = QPushButton("Export concise PDF")
         self.export_button.clicked.connect(self.export_pdf)
         header.addWidget(self.export_button)
         self.open_button = QPushButton("Open report")
@@ -302,6 +302,29 @@ class MainWindow(QMainWindow):
         self.activity = readonly_text()
         self.activity.setMaximumBlockCount(2000)
         self.tabs.addTab(self.activity, "Activity")
+        evidence_page = QWidget()
+        evidence_box = QVBoxLayout(evidence_page)
+        actions = QHBoxLayout()
+        self.import_evidence_button = QPushButton('Import test evidence')
+        self.import_evidence_button.clicked.connect(self.import_evidence)
+        self.import_notes_button = QPushButton('Import reviewer notes')
+        self.import_notes_button.clicked.connect(self.import_notes)
+        self.save_evidence_button = QPushButton('Save evidence review as...')
+        self.save_evidence_button.clicked.connect(self.save_evidence)
+        for button in (self.import_evidence_button, self.import_notes_button, self.save_evidence_button):
+            actions.addWidget(button)
+        evidence_box.addLayout(actions)
+        evidence_box.addWidget(label('Imported test reports are unauthenticated. Reviewer notes and model text cannot grant verification.', wrap=True))
+        self.requirement_table = self.make_table(['REQUIREMENT', 'STATUS', 'SCOPED TEST OUTCOMES', 'EVIDENCE', 'IMPACT'])
+        self.requirement_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.requirement_table.itemSelectionChanged.connect(self.show_requirement)
+        self.requirement_details = readonly_text()
+        evidence_splitter = QSplitter(Qt.Orientation.Vertical)
+        evidence_splitter.addWidget(self.requirement_table)
+        evidence_splitter.addWidget(self.requirement_details)
+        evidence_splitter.setSizes([250, 350])
+        evidence_box.addWidget(evidence_splitter)
+        self.tabs.addTab(evidence_page, 'Requirement evidence')
         root.addWidget(content, 1)
         self.update_controls()
 
@@ -324,6 +347,9 @@ class MainWindow(QMainWindow):
         # Signals can fire while the initial widget tree is still being built.
         if not hasattr(self, "open_button"):
             return
+        if hasattr(self, 'save_evidence_button'):
+            for button in (self.import_evidence_button, self.import_notes_button, self.save_evidence_button):
+                button.setEnabled(not self.busy and self.report is not None)
         for widget in (self.repo_input, self.output_input, self.browse_button, self.use_ollama, self.pdf_check, self.start_button, self.load_button):
             widget.setEnabled(not self.busy)
         enabled = self.use_ollama.isChecked() and not self.busy
@@ -363,11 +389,16 @@ class MainWindow(QMainWindow):
 
     def display_report(self):
         report = self.report
+        view = pqscan.requirement_assessment(report)
+        if view is not None: report['requirement_assessment'] = view
         fusion = report["fusion_assessment"]
         self.repository_label.setText(report["repository"] + "  |  " + report["generated_at"])
         self.headline.setText(fusion["label"])
         self.reason.setText(fusion["reason"])
         self.static_status.setText("Scanner: " + report["assessment"]["status"].replace("_", " ") + "  /  Runtime: unverified  /  Certification: not issued")
+        if report.get('report_kind') == 'execution_evidence_view':
+            self.headline.setText('Implementation test evidence')
+            self.reason.setText('Imported results for a recorded artifact. Inventory was not run; whole-requirement conformance remains unverified.')
         for key in ("declarations", "implementation", "classical"):
             self.metrics[key].setText(str(fusion["signals"][key]["sites"]))
         self.metrics["coverage"].setText("Incomplete" if fusion["coverage_incomplete"] else "In scope")
@@ -375,7 +406,7 @@ class MainWindow(QMainWindow):
         for signal in fusion["signals"].values():
             rows.append((signal["label"], "Observed" if signal["observed"] else "Not observed", str(signal["sites"]), signal["explanation"]))
         rows.extend([
-            ("Runtime / test validation", "Not performed", "--", "Source inspection does not prove test success or deployed protection."),
+            ("Attached test reports", str(len(view['subjects'])) + ' subject(s)' if view else 'None', "--", "Unauthenticated reported outcomes are shown in Requirement evidence; no deployed protection is established."),
             ("Local model review", report.get("llm_analysis", {}).get("status", "not_requested").replace("_", " "), "--", fusion["model_role"]),
         ])
         self.fusion_table.setRowCount(len(rows))
@@ -415,8 +446,8 @@ class MainWindow(QMainWindow):
                 compliance_lines.append("Test/example evidence (not executed): " + ", ".join(control["nonproduction_finding_ids"]))
         compliance_lines.extend([
             "", "EXECUTED CONFORMANCE BOUNDARY",
-            "Known-answer tests: not executed",
-            "Negative tests: not executed",
+            "Inventory scanning does not execute known-answer or negative tests.",
+            "Attached test outcomes and provenance: see Requirement evidence.",
             "Interoperability tests: not executed",
             "ACVP/CAVP validation: not verified",
             "FIPS-validated module: not verified",
@@ -425,6 +456,22 @@ class MainWindow(QMainWindow):
             "", compliance["boundary"],
         ])
         self.compliance_text.setPlainText("\n".join(compliance_lines))
+        self.requirement_table.setRowCount(len(view['requirements']) if view else 0)
+        if view:
+            support = pqscan.evidence_module(required=True)
+            self.requirement_details.setPlainText('\n'.join(support.summary_lines(view)))
+            for index, row in enumerate(view['requirements']):
+                outcomes = ', '.join(sorted({g['outcome'] for g in row['test_scopes']})) or 'No mapped tests'
+                values = [row['requirement']['id'], row['status'].replace('_', ' '), outcomes.replace('_', ' '), str(len(row['evidence_ids'])), row['exploitability'].replace('_', ' ')]
+                for col, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    item.setToolTip(value)
+                    self.requirement_table.setItem(index, col, item)
+            self.requirement_table.resizeColumnsToContents()
+            for column in (0, 1, 3, 4):
+                self.requirement_table.setColumnWidth(column, self.requirement_table.columnWidth(column) + 14)
+        else:
+            self.requirement_details.setPlainText('The optional evidence package is unavailable.')
         self.populate_findings()
         coverage = report["coverage"]
         lines = [f"Files scanned: {report['summary']['files_scanned']}",
@@ -444,6 +491,53 @@ class MainWindow(QMainWindow):
         else:
             lines.append(str(review.get("error", "A model review does not count as runtime validation. Enable Ollama review when starting a new scan.")))
         self.ai_text.setPlainText("\n".join(lines))
+
+    def show_requirement(self):
+        item = self.requirement_table.item(self.requirement_table.currentRow(), 0)
+        if item and self.report and self.report.get('requirement_assessment'):
+            view = self.report['requirement_assessment']
+            support = pqscan.evidence_module(required=True)
+            self.requirement_details.setPlainText('\n'.join(support.detail_lines(view, item.text())))
+
+    def import_evidence(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, 'Import library/provider evidence (no execution)', self.output_input.text(), 'JSON reports (*.json)')
+        if paths: self.attach_evidence(paths)
+
+    def import_notes(self):
+        path, _ = QFileDialog.getOpenFileName(self, 'Import reviewer triage notes', self.output_input.text(), 'JSON notes (*.json)')
+        if path: self.attach_evidence([], path)
+
+    def attach_evidence(self, paths, notes=None):
+        if self.report is None or self.busy: return False
+        try:
+            pqscan.evidence_module(required=True).add_reports(self.report, paths, notes)
+        except (OSError, ValueError, RecursionError) as exc:
+            self.activity.appendPlainText(str(exc))
+            self.run_status.setText('Evidence rejected; current review is unchanged.')
+            return False
+        # The displayed review now differs from its file. Require Save as before
+        # subprocess PDF export so exporting cannot silently lose attachments.
+        self.report_path = self.pdf_path = None
+        self.display_report()
+        self.update_controls()
+        self.run_status.setText('Evidence imported. Save evidence review as a new JSON before exporting PDF.')
+        return True
+
+    def save_evidence(self):
+        if self.report is None or self.busy: return
+        path, _ = QFileDialog.getSaveFileName(self, 'Save evidence review (new file)', str(Path(self.output_input.text()) / 'evidence-review.json'), 'JSON reports (*.json)')
+        if not path: return
+        try:
+            output = Path(path)
+            if output.suffix.lower() != '.json': output = output.with_suffix('.json')
+            self.report['requirement_assessment'] = pqscan.requirement_assessment(self.report)
+            pqscan.save_json(self.report, output)
+            self.report_path = output.absolute()
+            self.run_status.setText('Evidence review saved. PDF export is available.')
+            self.update_controls()
+        except (OSError, ValueError) as exc:
+            self.activity.appendPlainText(str(exc))
+            self.run_status.setText('Could not save evidence review.')
 
     def populate_findings(self, *_):
         if self.report is None:

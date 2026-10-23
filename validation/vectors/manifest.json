@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "profile": "pqcrypto-0.3.4-v1",
+  "file": "acvp-selected.json",
+  "sha256": "b7d13c5615a2b0bf7fa205dd527e70144d4f29d7a30330e8545ff470a57514d7",
+  "cases": 25,
+  "sources": [
+    {
+      "id": "mlkem",
+      "repository": "https://github.com/usnistgov/ACVP-Server",
+      "commit": "975de31eb83d87039ec88934fdc47d8c312b892d",
+      "path": "gen-val/json-files/ML-KEM-encapDecap-FIPS203/internalProjection.json",
+      "url": "https://raw.githubusercontent.com/usnistgov/ACVP-Server/975de31eb83d87039ec88934fdc47d8c312b892d/gen-val/json-files/ML-KEM-encapDecap-FIPS203/internalProjection.json",
+      "sha256": "a556952ce869bb89c3a3196a701dad89647c193a34c86eafb61a9d710d5b810f",
+      "algorithm": "ML-KEM",
+      "mode": "encapDecap",
+      "revision": "FIPS203",
+      "selection": "All tests from tgId 5; secret signing keys removed; original input/output bytes retained."
+    },
+    {
+      "id": "mldsa",
+      "repository": "https://github.com/usnistgov/ACVP-Server",
+      "commit": "975de31eb83d87039ec88934fdc47d8c312b892d",
+      "path": "gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+      "url": "https://raw.githubusercontent.com/usnistgov/ACVP-Server/975de31eb83d87039ec88934fdc47d8c312b892d/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+      "sha256": "47cdd6314c7f746d02421ffcba89d4dbc7bb875ac49e07a029fdfc26fba55437",
+      "algorithm": "ML-DSA",
+      "mode": "sigVer",
+      "revision": "FIPS204",
+      "selection": "All tests from tgId 3; secret signing keys removed; original input/output bytes retained."
+    }
+  ]
+}

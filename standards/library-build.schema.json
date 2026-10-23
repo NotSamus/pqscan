@@ -1,0 +1,504 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "const": "built"
+    },
+    "source_snapshot_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "isolation_checks": {
+      "type": "object",
+      "properties": {
+        "uid": {
+          "const": 65534
+        },
+        "active_interfaces": {
+          "type": "array",
+          "items": {
+            "const": "lo"
+          },
+          "maxItems": 1,
+          "minItems": 1
+        },
+        "root_read_only": {
+          "const": true
+        },
+        "capabilities_zero": {
+          "const": true
+        },
+        "no_new_privileges": {
+          "const": true
+        },
+        "seccomp_filter": {
+          "const": true
+        }
+      },
+      "required": [
+        "uid",
+        "active_interfaces",
+        "root_read_only",
+        "capabilities_zero",
+        "no_new_privileges",
+        "seccomp_filter"
+      ],
+      "additionalProperties": false
+    },
+    "artifact_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "artifact_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "configure": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "maxItems": 256,
+      "minItems": 0
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "maxItems": 256,
+        "minItems": 0
+      },
+      "maxItems": 3,
+      "minItems": 3
+    },
+    "compiler_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "toolchain_packages_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "build_log_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "compilation_commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "directory": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "arguments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            "maxItems": 256,
+            "minItems": 0
+          }
+        },
+        "required": [
+          "directory",
+          "arguments"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 5000,
+      "minItems": 1
+    },
+    "generated_files": {
+      "type": "object",
+      "properties": {
+        "Makefile": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "configdata.pm": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "include/openssl/configuration.h": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "Makefile",
+        "configdata.pm",
+        "include/openssl/configuration.h"
+      ],
+      "additionalProperties": false
+    },
+    "native_source": {
+      "type": "object",
+      "properties": {
+        "parser": {
+          "const": "libclang-14"
+        },
+        "translation_units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "file_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "arguments": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "maxItems": 256,
+                "minItems": 0
+              },
+              "macros_defined": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "macro_expansions": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "path",
+              "file_sha256",
+              "arguments",
+              "macros_defined",
+              "macro_expansions"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 24,
+          "minItems": 0
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 24
+              },
+              "usr": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "start_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "end_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "file_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "usr",
+              "name",
+              "path",
+              "start_line",
+              "end_line",
+              "file_sha256"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 1200,
+          "minItems": 0
+        },
+        "calls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "caller_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 24
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "callee": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 4096
+              },
+              "resolution": {
+                "enum": [
+                  "direct_declaration",
+                  "indirect_unresolved"
+                ]
+              },
+              "target_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 24
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "caller_id",
+              "path",
+              "line",
+              "callee",
+              "resolution",
+              "target_id"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 4000,
+          "minItems": 0
+        },
+        "source_slices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "symbol_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 24
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "start_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "end_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "file_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "symbol_id",
+              "path",
+              "start_line",
+              "end_line",
+              "text",
+              "sha256",
+              "file_sha256"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 1200,
+          "minItems": 0
+        },
+        "source_chars": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 24000
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "partial": {
+              "const": true
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "details": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "maxItems": 4,
+                    "minItems": 0
+                  },
+                  "symbol_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 24
+                  }
+                },
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 10000,
+              "minItems": 0
+            },
+            "selected_prefixes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "maxItems": 30,
+              "minItems": 0
+            },
+            "candidate_translation_units": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "call_budget_reached": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "partial",
+            "gaps",
+            "selected_prefixes",
+            "candidate_translation_units",
+            "call_budget_reached"
+          ],
+          "additionalProperties": false
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "maxItems": 10,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "parser",
+        "translation_units",
+        "symbols",
+        "calls",
+        "source_slices",
+        "source_chars",
+        "coverage",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "machine": {
+      "enum": [
+        "aarch64",
+        "x86_64"
+      ]
+    },
+    "python": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50
+    }
+  },
+  "required": [
+    "status",
+    "source_snapshot_id",
+    "isolation_checks",
+    "artifact_sha256",
+    "artifact_name",
+    "configure",
+    "commands",
+    "compiler_version",
+    "toolchain_packages_sha256",
+    "build_log_sha256",
+    "compilation_commands",
+    "generated_files",
+    "native_source",
+    "machine",
+    "python"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,0 +1,138 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "hypotheses",
+    "uncertainties"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1800
+    },
+    "hypotheses": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "status",
+          "requirement_ids",
+          "source_refs",
+          "observed_behavior",
+          "applicability_reason",
+          "expected_behavior",
+          "possible_impact",
+          "assumptions",
+          "validation_plan",
+          "exploitability"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "status": {
+            "const": "unverified_hypothesis"
+          },
+          "requirement_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "uniqueItems": true
+          },
+          "source_refs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "slice_id",
+                "start_line",
+                "end_line"
+              ],
+              "properties": {
+                "slice_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048
+                },
+                "start_line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "end_line": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "uniqueItems": true
+          },
+          "observed_behavior": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1200
+          },
+          "applicability_reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 800
+          },
+          "expected_behavior": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 800
+          },
+          "possible_impact": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 800
+          },
+          "assumptions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 600
+            }
+          },
+          "validation_plan": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1200
+          },
+          "exploitability": {
+            "const": "not_assessed"
+          }
+        }
+      }
+    },
+    "uncertainties": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

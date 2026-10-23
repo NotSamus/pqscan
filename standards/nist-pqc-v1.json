@@ -1,0 +1,280 @@
+{
+  "schema_version": "1.0",
+  "catalog_id": "pqscan-nist-pqc-initial",
+  "version": "1.0.0",
+  "reviewed_on": "2026-10-20",
+  "coverage": "partial",
+  "scope": "Selected ML-KEM, ML-DSA and SLH-DSA interface requirements and ML-KEM application requirements. No automated conformance checks in milestone 1.",
+  "excluded_topics": [
+    "Full arithmetic equivalence and all parameter tables",
+    "Side-channel and fault resistance",
+    "Complete randomness and key-management validation",
+    "Protocol-specific chatroom, AEAD, replay and downgrade requirements",
+    "Other KEMs covered by SP 800-227",
+    "Formal CAVP and CMVP validation"
+  ],
+  "sources": [
+    {
+      "id": "FIPS203",
+      "title": "FIPS 203",
+      "publication_date": "2024-08-13",
+      "edition": "final",
+      "url": "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.203.pdf",
+      "publication_url": "https://csrc.nist.gov/pubs/fips/203/final",
+      "sha256": "fe1f12f32a7e44ec9fdebbf400cda843a40b506dee676725234dc6f7923b6cac",
+      "reviewed_on": "2026-10-20",
+      "errata": {
+        "status": "reviewed",
+        "url": "https://csrc.nist.gov/files/pubs/fips/203/final/docs/fips-203-potential-updates.xlsx",
+        "sha256": "edf899c89762449f43d7713883caeefc2e4ae9ae98d5a76b339547db22cb3ac7",
+        "checked_on": "2026-10-20",
+        "disposition": "Reviewed both listed corrections: Appendix A indexing explanation and the Algorithm 15 comment. Neither changes the selected external-interface requirements."
+      }
+    },
+    {
+      "id": "FIPS204",
+      "title": "FIPS 204",
+      "publication_date": "2024-08-13",
+      "edition": "final",
+      "url": "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf",
+      "publication_url": "https://csrc.nist.gov/pubs/fips/204/final",
+      "sha256": "57239b9f84c03227eda3ca0991204dc7764c79af9ce2e6824eda774918d46b6b",
+      "reviewed_on": "2026-10-20",
+      "errata": {
+        "status": "reviewed",
+        "url": "https://csrc.nist.gov/files/pubs/fips/204/final/docs/fips-204-potential-updates.xlsx",
+        "sha256": "5bc93ce63bc647e6d1d456cb2d3a171426c15aca4a7a0e0edd40d08b7a34c793",
+        "checked_on": "2026-10-20",
+        "disposition": "Reviewed the 2026-07-31 errata sheet. The proposed Algorithm 3 overlong-context result changes error to false; preserve this distinction. Internal-verification prose uses formatted M-prime. Arithmetic and signing-loop corrections are outside this catalog."
+      }
+    },
+    {
+      "id": "FIPS205",
+      "title": "FIPS 205",
+      "publication_date": "2024-08-13",
+      "edition": "final",
+      "url": "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.205.pdf",
+      "publication_url": "https://csrc.nist.gov/pubs/fips/205/final",
+      "sha256": "8ef34228276f3386d23cb0da8c14592b8cfb0db3358016bba64df7a004f8d13d",
+      "reviewed_on": "2026-10-20",
+      "errata": {
+        "status": "none_listed",
+        "url": null,
+        "sha256": null,
+        "checked_on": "2026-10-20",
+        "disposition": "No errata attachment listed on the publication page on the review date; this is not a claim that the publication has no errors."
+      }
+    },
+    {
+      "id": "SP800227",
+      "title": "SP 800-227",
+      "publication_date": "2025-09-18",
+      "edition": "final",
+      "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-227.pdf",
+      "publication_url": "https://csrc.nist.gov/pubs/sp/800/227/final",
+      "sha256": "41e427a461c1ae0ceed2a68dc29507400983d1d495c35631306d0f4803ca4614",
+      "reviewed_on": "2026-10-20",
+      "errata": {
+        "status": "none_listed",
+        "url": null,
+        "sha256": null,
+        "checked_on": "2026-10-20",
+        "disposition": "No errata attachment listed on the publication page on the review date; this is not a claim that the publication has no errors."
+      }
+    }
+  ],
+  "requirements": [
+    {
+      "id": "F203-ENCAPS-INPUT",
+      "source_id": "FIPS203",
+      "locator": "Section 7.2",
+      "algorithm": "ML-KEM",
+      "title": "Encapsulation input checks",
+      "obligation": "shall",
+      "applicability": "External encapsulation accepts an ML-KEM encapsulation key; account for permitted prior checks.",
+      "expected_behavior": "Check the key byte length and encoded coefficient range before encapsulation.",
+      "verification_methods": [
+        "provider_contract_review",
+        "negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "The listed corrections do not alter this requirement; use the pinned final publication."
+    },
+    {
+      "id": "F203-DECAPS-INPUT",
+      "source_id": "FIPS203",
+      "locator": "Section 7.3",
+      "algorithm": "ML-KEM",
+      "title": "Decapsulation input checks",
+      "obligation": "shall",
+      "applicability": "External decapsulation accepts ML-KEM keys and ciphertexts; account for permitted prior key checks.",
+      "expected_behavior": "Check ciphertext length each execution; establish key length and embedded-key hash consistency.",
+      "verification_methods": [
+        "provider_contract_review",
+        "negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "The listed corrections do not alter this requirement; use the pinned final publication."
+    },
+    {
+      "id": "F203-IMPLICIT-REJECTION",
+      "source_id": "FIPS203",
+      "locator": "Section 6.3, Algorithm 18",
+      "algorithm": "ML-KEM",
+      "title": "Implicit rejection",
+      "obligation": "algorithm_definition",
+      "applicability": "ML-KEM internal decapsulation after external input checks.",
+      "expected_behavior": "On re-encryption mismatch return J(z || c), not the candidate secret or a validity flag.",
+      "verification_methods": [
+        "known_answer_tests",
+        "negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "The listed corrections do not alter this requirement; use the pinned final publication."
+    },
+    {
+      "id": "F203-RANDOMNESS",
+      "source_id": "FIPS203",
+      "locator": "Sections 3.3, 7.1 and 7.2; Algorithms 19 and 20",
+      "algorithm": "ML-KEM",
+      "title": "Randomness and failure handling",
+      "obligation": "shall",
+      "applicability": "External ML-KEM key generation or encapsulation generates randomness.",
+      "expected_behavior": "Generate required random inputs with an approved RBG of sufficient strength; propagate generator failure.",
+      "verification_methods": [
+        "provider_contract_review",
+        "randomness_failure_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "The listed corrections do not alter this requirement; use the pinned final publication."
+    },
+    {
+      "id": "F204-CONTEXT",
+      "source_id": "FIPS204",
+      "locator": "Sections 5.2-5.4; Algorithms 2-5",
+      "algorithm": "ML-DSA",
+      "title": "Context limits and formatting",
+      "obligation": "algorithm_definition",
+      "applicability": "External ML-DSA or HashML-DSA signing/verifying accepts a context.",
+      "expected_behavior": "Limit contexts to 255 bytes and include the specified context encoding. Empty contexts are permitted.",
+      "verification_methods": [
+        "provider_contract_review",
+        "negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "Proposed 2026-02-23 correction changes Algorithm 3 overlong-context output from error to false. Record which behavior is tested; do not silently apply the proposal."
+    },
+    {
+      "id": "F204-PREHASH",
+      "source_id": "FIPS204",
+      "locator": "Section 5.4.1; Algorithms 4 and 5",
+      "algorithm": "ML-DSA",
+      "title": "Prehash domain separation",
+      "obligation": "algorithm_definition",
+      "applicability": "HashML-DSA is selected; pure ML-DSA has a different message format.",
+      "expected_behavior": "Use the selected permitted prehash and its identifier in the prescribed message encoding.",
+      "verification_methods": [
+        "known_answer_tests",
+        "negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "Use the pinned final algorithms, recording relevant proposed clarifications separately."
+    },
+    {
+      "id": "F204-VERIFY",
+      "source_id": "FIPS204",
+      "locator": "Section 6.3, Algorithm 8",
+      "algorithm": "ML-DSA",
+      "title": "Internal verification checks",
+      "obligation": "algorithm_definition",
+      "applicability": "ML-DSA internal verification receives the formatted message and signature.",
+      "expected_behavior": "Reject decoding failures and enforce the specified norm, hint and commitment checks.",
+      "verification_methods": [
+        "known_answer_tests",
+        "negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "The proposed prose correction names formatted M-prime; Algorithm 8 already uses it. No arithmetic-equivalence claim is included."
+    },
+    {
+      "id": "F205-CONTEXT",
+      "source_id": "FIPS205",
+      "locator": "Sections 10.2-10.3; Algorithms 22-25",
+      "algorithm": "SLH-DSA",
+      "title": "Context and signature mode",
+      "obligation": "algorithm_definition",
+      "applicability": "External pure or prehash SLH-DSA signing/verifying.",
+      "expected_behavior": "Enforce the 255-byte context limit and the selected mode encoding; empty contexts are permitted.",
+      "verification_methods": [
+        "known_answer_tests",
+        "negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "No errata attachment was listed when reviewed; use the pinned final publication."
+    },
+    {
+      "id": "F205-VERIFY",
+      "source_id": "FIPS205",
+      "locator": "Section 9.3, Algorithm 20",
+      "algorithm": "SLH-DSA",
+      "title": "Signature length and verification",
+      "obligation": "algorithm_definition",
+      "applicability": "SLH-DSA internal verification for the selected parameter set.",
+      "expected_behavior": "Reject incorrect signature lengths and compare the reconstructed root with the public-key root.",
+      "verification_methods": [
+        "known_answer_tests",
+        "negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "No errata attachment was listed when reviewed; use the pinned final publication."
+    },
+    {
+      "id": "SP227-KEY-OWNERSHIP",
+      "source_id": "SP800227",
+      "locator": "Section 4.2, RM3",
+      "algorithm": "ML-KEM",
+      "title": "Static peer-key ownership",
+      "obligation": "must",
+      "applicability": "An encapsulating party obtains another party's static encapsulation key.",
+      "expected_behavior": "Establish assurance that the peer owns the key before or during key establishment.",
+      "verification_methods": [
+        "protocol_review",
+        "protocol_negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "No errata attachment was listed when reviewed; apply the stated condition."
+    },
+    {
+      "id": "SP227-EPHEMERAL",
+      "source_id": "SP800227",
+      "locator": "Section 4.2, RS6",
+      "algorithm": "ML-KEM",
+      "title": "Ephemeral key lifecycle",
+      "obligation": "shall",
+      "applicability": "The application uses a KEM key pair designated ephemeral.",
+      "expected_behavior": "Use that pair for only one key-establishment execution and destroy it as soon as possible afterwards.",
+      "verification_methods": [
+        "protocol_review",
+        "key_lifecycle_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "No errata attachment was listed when reviewed; apply the stated condition."
+    },
+    {
+      "id": "SP227-INTEGRITY",
+      "source_id": "SP800227",
+      "locator": "Section 4.2, RM5",
+      "algorithm": "ML-KEM",
+      "title": "Key-establishment integrity",
+      "obligation": "must",
+      "applicability": "KEM key establishment over a communication channel; the application defines the required integrity properties.",
+      "expected_behavior": "Provide application-appropriate integrity for the key-establishment process.",
+      "verification_methods": [
+        "protocol_review",
+        "protocol_negative_tests"
+      ],
+      "reviewed_on": "2026-10-20",
+      "errata_disposition": "No errata attachment was listed when reviewed; apply the stated condition."
+    }
+  ]
+}

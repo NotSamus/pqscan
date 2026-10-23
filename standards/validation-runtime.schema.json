@@ -1,0 +1,123 @@
+{
+  "type": "object",
+  "properties": {
+    "versions": {
+      "type": "object",
+      "properties": {
+        "pqcrypto": {
+          "const": "0.3.4"
+        },
+        "cffi": {
+          "const": "1.17.1"
+        },
+        "pycparser": {
+          "const": "2.22"
+        }
+      },
+      "required": [
+        "pqcrypto",
+        "cffi",
+        "pycparser"
+      ],
+      "additionalProperties": false
+    },
+    "python": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "platform": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "machine": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "module",
+          "file",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 4,
+      "minItems": 4
+    },
+    "build_flags": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "isolation_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "uid": {
+          "const": 65534
+        },
+        "root_read_only": {
+          "const": true
+        },
+        "no_new_privileges": {
+          "const": true
+        },
+        "capabilities_zero": {
+          "const": true
+        },
+        "seccomp_filter": {
+          "const": true
+        },
+        "active_interfaces": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "const": "lo"
+          }
+        }
+      },
+      "required": [
+        "uid",
+        "root_read_only",
+        "no_new_privileges",
+        "capabilities_zero",
+        "seccomp_filter",
+        "active_interfaces"
+      ]
+    }
+  },
+  "required": [
+    "versions",
+    "python",
+    "platform",
+    "machine",
+    "artifacts",
+    "build_flags",
+    "isolation_checks"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

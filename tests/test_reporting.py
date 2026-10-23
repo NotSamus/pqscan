@@ -217,10 +217,45 @@ class ReportTests(unittest.TestCase):
             text = "\n".join(page.extract_text() for page in reader.pages)
             self.assertGreater(len(reader.pages), 3)
             self.assertIn("<b>Literal model text</b>", text)
-            self.assertIn("F0016", text)
+            self.assertIn("additional records retained in JSON", text)
+            self.assertNotIn("F0016", text)
             self.assertIn("Coverage and limitations", text)
             for page in reader.pages:
                 self.assertIn("Not a certification", page.extract_text())
+
+    @unittest.skipUnless(importlib.util.find_spec("reportlab"), "optional ReportLab is not installed")
+    def test_large_repository_pdf_is_bounded_without_losing_json_evidence(self):
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Table
+        report = copy.deepcopy(self.report)
+        report["findings"] = [dict(report["findings"][0], finding_id=f"F{i:05d}") for i in range(20000)]
+        report["summary"]["findings"] = 20000
+        report["coverage"]["skipped"] = [{"path": f"ignored/{i}.txt", "reason": "unsupported file type"} for i in range(4000)]
+        report["summary"]["files_or_directories_skipped"] = 4000
+        report["coverage"]["errors"] = ["Late traversal error"]
+        before = copy.deepcopy(report)
+        observed = {}
+        original = SimpleDocTemplate.build
+
+        def capture(doc, story, **kwargs):
+            text = []
+            def collect(item):
+                if isinstance(item, Paragraph): text.append(item.getPlainText())
+                elif isinstance(item, Table):
+                    for row in item._cellvalues:
+                        for cell in row: collect(cell)
+            for item in story: collect(item)
+            observed["text"] = "\n".join(text)
+            original(doc, story, **kwargs)
+            observed["pages"] = doc.page
+        with mock.patch.object(SimpleDocTemplate, "build", capture):
+            pqscan.render_pdf(report, self.root / "bounded.pdf")
+        self.assertLessEqual(observed["pages"], 10)
+        self.assertIn("20000", observed["text"])
+        self.assertIn("4000", observed["text"])
+        self.assertIn("Late traversal error", observed["text"])
+        self.assertNotIn("F19999", observed["text"])
+        self.assertIn("additional records retained in JSON", observed["text"])
+        self.assertEqual(report, before)
 
 
 if __name__ == "__main__":

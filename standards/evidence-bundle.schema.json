@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "reports",
+    "decisions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "reports": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "maxItems": 8
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requirement_id",
+          "evidence_ids",
+          "reviewer",
+          "created_at",
+          "disposition",
+          "note"
+        ],
+        "properties": {
+          "requirement_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "reviewer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "created_at": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "disposition": {
+            "enum": [
+              "needs_reproduction",
+              "dismissed",
+              "disputed"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        }
+      },
+      "maxItems": 64
+    }
+  }
+}

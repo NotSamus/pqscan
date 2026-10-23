@@ -1,6 +1,7 @@
 """Offscreen integration tests for the desktop workflow; never opens user apps."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -130,6 +131,41 @@ class DesktopTests(unittest.TestCase):
         self.window.display_report()
         self.assertEqual(self.window.repository_label.textFormat(), Qt.TextFormat.PlainText)
         self.assertIn("<b>", self.window.repository_label.text())
+
+    def test_requirement_table_and_detail_show_scoped_evidence(self):
+        self.load_fixture()
+        self.assertEqual(self.window.requirement_table.rowCount(), 12)
+        self.window.requirement_table.selectRow(0)
+        details = self.window.requirement_details.toPlainText()
+        self.assertIn('Specification:', details)
+        self.assertIn('whole requirement remains unverified', details)
+
+    def test_imported_library_review_must_be_saved_before_pdf_export(self):
+        import test_library
+        helper = test_library.LibraryTests(); helper.setUp(); self.addCleanup(helper.doCleanups)
+        path = self.root / 'library.json'; path.write_text(json.dumps(helper.completed()))
+        original = self.load_fixture()
+        self.assertTrue(self.window.attach_evidence([path]))
+        self.assertIsNone(self.window.report_path)
+        self.assertFalse(self.window.export_button.isEnabled())
+        view = self.window.report['requirement_assessment']
+        self.assertEqual(len(view['subjects']), 1)
+        self.assertIn('imported_unverified', self.window.requirement_details.toPlainText())
+        output = self.root / 'saved-review.json'
+        with mock.patch('pqscan_gui.QFileDialog.getSaveFileName', return_value=(str(output), 'JSON')):
+            self.window.save_evidence()
+        self.assertTrue(output.is_file())
+        self.assertTrue(self.window.export_button.isEnabled())
+        self.assertEqual(len(pqscan.load_report(output)['requirement_assessment']['subjects']), 1)
+        self.assertNotIn('evidence_bundle', pqscan.load_report(original))
+
+    def test_invalid_evidence_keeps_loaded_gui_report(self):
+        self.load_fixture()
+        before = self.window.report_path
+        path = self.root / 'bad-evidence.json'; path.write_text('{"tool":"invented"}')
+        self.assertFalse(self.window.attach_evidence([path]))
+        self.assertEqual(self.window.report_path, before)
+        self.assertIn('rejected', self.window.run_status.text())
 
 
 if __name__ == "__main__":
